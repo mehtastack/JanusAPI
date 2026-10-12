@@ -99,7 +99,7 @@ describe('runner data section', () => {
     await waitFor(() => expect(m!.store.getState().runner.summary).not.toBeNull(), { timeout: 8000 });
     const start = m!.calls.find((c) => c.channel === 'run:start')!.payload as Record<string, unknown>;
     expect(start).toMatchObject({ folderId: null, stopOnFailure: false, iterations: 2, delayMs: 5 });
-    expect(String(start.dataFile)).toMatch(/data\/users\.csv$/);
+    expect(String(start.dataFile)).toMatch(/data[\\/]users\.csv$/);
   });
 
   it('groups results by iteration with the row label, and sums them up as "N iterations · X passed · Y failed"', async () => {
@@ -146,7 +146,7 @@ describe('runner data section', () => {
     expect(stored.map(([k]) => k)).toEqual([`apijanus.runner:${root}`]);
     expect(stored).toHaveLength(1);
     const value = JSON.parse(stored[0]![1] as string) as Record<string, unknown>;
-    expect(value).toEqual({ dataFile: expect.stringMatching(/data\/users\.csv$/), iterations: 2, delayMs: 250 });
+    expect(value).toEqual({ dataFile: expect.stringMatching(/data[\\/]users\.csv$/), iterations: 2, delayMs: 250 });
     expect(stored[0]![1]).not.toMatch(/alice|hunter2/);
     // Reopening the collection resets the runner; opening it again restores the settings and re-reads the file in main.
     await m!.store.getState().openCollection({ discardUnsaved: true });

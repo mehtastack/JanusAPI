@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 const SRC = join(__dirname, '..', '..', 'src', 'renderer', 'src');
 /** The one value the renderer may import from core: the pure, dependency-free JSONPath evaluator. */
@@ -22,7 +22,7 @@ describe('renderer boundary with core', () => {
       for (const m of text.matchAll(/(?:^|\n)\s*((?:import|export)\b[^;]*?from\s*['"]@apijanus\/core[^'"]*['"]\s*;?)/g)) {
         const statement = m[1]!.replace(/\s+/g, ' ').trim();
         if (/^(import|export) type\b/.test(statement)) continue;
-        found.push({ file: relative(SRC, f), statement });
+        found.push({ file: relative(SRC, f).split(sep).join('/'), statement });
       }
       // Dynamic imports and requires of core are never allowed.
       expect(text, f).not.toMatch(/(?:import|require)\s*\(\s*['"]@apijanus\/core/);

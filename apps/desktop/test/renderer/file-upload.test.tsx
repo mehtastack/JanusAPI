@@ -13,7 +13,8 @@ afterEach(async () => { cleanup(); await m?.h.close(); m = undefined; });
 
 const pane = () => screen.getByRole('region', { name: /^Request / });
 const body = (id: string) => m!.store.getState().views[id]?.request?.body;
-const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), 'apijanus-ui-out-')));
+// .native also expands Windows short names (RUNNER~1), as the app's stored path does.
+const outsideDir = realpathSync.native(mkdtempSync(join(tmpdir(), 'apijanus-ui-out-')));
 writeFileSync(join(outsideDir, 'photo.png'), Buffer.alloc(2048, 1));
 
 const files = (baseUrl: string) => ({

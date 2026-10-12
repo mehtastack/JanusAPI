@@ -9,7 +9,7 @@ import { homedir } from 'node:os';
 import { setup, tmp } from './session-setup';
 import { schemas } from '../src/main/contract';
 import { PRELOAD_ONLY_CHANNELS, type RunView } from '../src/shared/api';
-import type { HistoryEntry } from '@apijanus/core';
+import { displayPath, type HistoryEntry } from '@apijanus/core';
 import type { HistoryPage } from '../src/shared/api';
 import { canSymlink } from '../../../packages/core/test/helpers';
 
@@ -170,7 +170,7 @@ describe('sending and recording files', () => {
     const abs = join(homedir(), 'apijanus-no-such-dir', 'x.bin');
     await t.call('request:edit', { id: 'get.req.yml', ops: [{ op: 'set', path: '/body', value: { type: 'binary', file: { path: abs } } }] });
     const run = await t.call<RunView>('request:send', { id: 'get.req.yml' });
-    expect(run.error).toBe('File not found: ~/apijanus-no-such-dir/x.bin');
+    expect(run.error).toBe(`File not found: ${join('~', 'apijanus-no-such-dir', 'x.bin')}`);
   });
 });
 
@@ -238,7 +238,9 @@ describe('files outside the collection are sent only after they are chosen on th
     expect(run.response?.status).toBe(200);
     expect((await t.runOnce()).outcome).toBe('passed');
     expect(await t.call('request:copyCurl', { id: 'leak.req.yml', hideSecrets: false })).toEqual({ ok: true });
-    expect(t.clipboard.at(-1)).toContain(`@${t.secret}`);
+    // curl's -F syntax double-quotes a path holding a backslash (Windows) and escapes it.
+    const formPath = /[;,"\\]/.test(t.secret) ? `"${t.secret.replace(/[\\"]/g, '\\$&')}"` : t.secret;
+    expect(t.clipboard.at(-1)).toContain(`@${formPath}`);
     expect(t.hits).toEqual(['/steal', '/steal']);
     // Stored in userData, never in the collection.
     expect(await readFile(t.allowlistFile, 'utf8')).toContain(t.secret);
@@ -387,7 +389,7 @@ describe('sensitive files inside the collection need choosing too', () => {
       { name: 'c', kind: 'file', fileName: 'hello.txt', size: 12 },
     ]);
     expect(JSON.stringify(host.files!('git.req.yml'))).not.toContain('411');
-    expect(host.fileLocations!('git.req.yml')).toEqual([join(outside, 'id_ed25519'), 'in this collection: link/id_ed25519', 'in this collection: files/hello.txt']);
+    expect(host.fileLocations!('git.req.yml')).toEqual([displayPath(join(outside, 'id_ed25519')), 'in this collection: link/id_ed25519', 'in this collection: files/hello.txt']);
   });
 
   it.skipIf(!canSymlink())('a file dropped through a linked parent directory inside the collection is stored relative', async () => {

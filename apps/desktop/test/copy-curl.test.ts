@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { setup, seenAuth } from './session-setup';
 import { schemas } from '../src/main/contract';
 
@@ -190,7 +190,7 @@ describe('boundaries', () => {
     return statSync(p).isDirectory() ? files(p) : /\.tsx?$/.test(f) ? [p] : [];
   });
   it('keeps electron imports in the three allowed files', () => {
-    const using = files(src).filter((f) => /from 'electron'/.test(readFileSync(f, 'utf8'))).map((f) => relative(src, f)).sort();
+    const using = files(src).filter((f) => /from 'electron'/.test(readFileSync(f, 'utf8'))).map((f) => relative(src, f).split(sep).join('/')).sort();
     expect(using.every((f) => ['main/index.ts', 'main/sandbox-worker.ts', 'preload/index.ts'].includes(f))).toBe(true);
     expect(readFileSync(join(src, 'main', 'session.ts'), 'utf8')).not.toMatch(/clipboard\.write|from 'electron'/);
   });

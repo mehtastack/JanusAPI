@@ -25,7 +25,7 @@ import { testCipher } from '../fixtures';
 /** The on-disk path of a test File, as the preload would learn it from a real drop (webUtils.getPathForFile). */
 const dropPaths = new WeakMap<File, string>();
 /** A File whose drop the fake preload treats as a real drop of the file at path. */
-export function droppedFile(path: string, name = path.split('/').pop() ?? 'file'): File {
+export function droppedFile(path: string, name = path.split(/[\\/]/).pop() ?? 'file'): File {
   const file = new File(['(contents are never read by the window)'], name);
   dropPaths.set(file, path);
   return file;
@@ -123,6 +123,8 @@ export async function harness(opts: { empty?: boolean; files?: (baseUrl: string)
       emit: (event, payload) => deliver(payload, event),
       writeClipboard: (text) => { clipboard.push(text); },
       pickUploadFile: async () => opts.pickUpload?.(root),
+      // The same platform the fake preload reports, so Copy as cURL writes for it on any host OS.
+      platform: (opts.platform ?? 'darwin') as NodeJS.Platform,
     });
     cleanups.push(() => session.close());
     const ai = await AiSettingsStore.open(join(userData, 'ai-settings.json'), secrets);
