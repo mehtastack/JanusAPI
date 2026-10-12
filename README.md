@@ -6,7 +6,7 @@
 
 Build, send and test HTTP and GraphQL requests. Ask Janus why a request fails and it reads the response, fixes the request and writes the tests, asking you before it sends anything.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-3DF5B0)](LICENSE) [![CI](https://github.com/mehtastack/JanusAPI/actions/workflows/ci.yml/badge.svg)](https://github.com/mehtastack/JanusAPI/actions/workflows/ci.yml) ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-555) ![No account](https://img.shields.io/badge/account-not%20needed-555)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3DF5B0)](LICENSE) [![CI](https://github.com/mehtastack/JanusAPI/actions/workflows/ci.yml/badge.svg)](https://github.com/mehtastack/JanusAPI/actions/workflows/ci.yml) [![Downloads](https://img.shields.io/github/downloads/mehtastack/JanusAPI/total?color=3DF5B0)](https://github.com/mehtastack/JanusAPI/releases) ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-555) ![No account](https://img.shields.io/badge/account-not%20needed-555)
 
 [Website](https://mehtastack.com/janusapi) · [Download](https://github.com/mehtastack/JanusAPI/releases) · [Why JanusAPI](#janusapi-vs-postman-vs-bruno)
 
