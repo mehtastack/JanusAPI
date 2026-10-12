@@ -23,14 +23,16 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   artifactName: JanusAPI-${version}-${arch}.${ext}
+# Installers carry no version, so https://github.com/mehtastack/JanusAPI/releases/latest/download/<name> always finds the
+# newest one. The updater reads each file's real name from latest*.yml, so this is safe for updates.
 dmg:
-  artifactName: JanusAPI-${version}-${arch}.${ext}
+  artifactName: JanusAPI-${arch}.${ext}
 win:
   target:
     - target: nsis
       arch: [x64]
   icon: build/icon.ico
-  artifactName: JanusAPI-Setup-${version}-${arch}.${ext}
+  artifactName: JanusAPI-Setup-${arch}.${ext}
 nsis:
   oneClick: false
   perMachine: false
@@ -54,10 +56,10 @@ linux:
   # Placeholder for local builds; dist.mjs uses the release owner's GitHub noreply address for release builds.
   maintainer: JanusAPI <maintainers@janusapi.invalid>
 appImage:
-  artifactName: JanusAPI-${version}-${arch}.${ext}
+  artifactName: JanusAPI-${arch}.${ext}
 deb:
   packageName: janusapi
-  artifactName: janusapi_${version}_${arch}.${ext}
+  artifactName: janusapi_${arch}.${ext}
   # Mirrors electron-builder 26.15.3's default deb dependencies (app-builder-lib FpmTarget.getDefaultDepends) plus
   # libsecret-1-0 (Electron safeStorage on GNOME Keyring / KWallet). Setting `depends` replaces the default, so
   # RECHECK this list against getDefaultDepends whenever electron-builder is upgraded.
