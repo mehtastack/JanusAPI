@@ -215,3 +215,129 @@ describe('new-host rule bypasses (R10)', () => {
     expect(q.decide(t('set_env_variable'), { name: 'a', value: 'b' }, host, { textParsed: true }).kind).toBe('ask');
   });
 });
+
+describe('run approvals', () => {
+  const run = createTools().find((t) => t.def.name === 'run_requests')!;
+  const host = (hosts: (string | undefined)[], known = ['api.local']) => {
+    const h = new FakeHost({ knownHosts: known });
+    h.runPreview = () => ({ label: 'folder users', count: hosts.length, hosts, janusEdited: 1 });
+    return h;
+  };
+
+  it('asks, listing hosts and marking new ones', () => {
+    const p = new PermissionPolicy({ askBeforeSend: true });
+    const d = p.decide(run, { folderId: 'users' }, host(['api.local', 'evil.example', 'api.local']));
+    expect(d).toEqual({ kind: 'ask', approval: { kind: 'run', target: 'folder users', count: 3, janusEdited: 1,
+      hosts: [{ host: 'api.local', isNew: false }, { host: 'evil.example', isNew: true }] } });
+  });
+
+  it('a conversation grant covers later runs to known hosts only', () => {
+    const p = new PermissionPolicy({ askBeforeSend: true });
+    const h = host(['api.local']);
+    const d = p.decide(run, { folderId: null }, h);
+    if (d.kind !== 'ask') throw new Error('expected ask');
+    p.record(d.approval, 'allow-conversation');
+    expect(p.decide(run, { ids: ['a'] }, h)).toEqual({ kind: 'allow' });
+    expect(p.decide(run, { ids: ['a'] }, host(['other.example'])).kind).toBe('ask');
+  });
+
+  it('approving a run approves its new hosts for the conversation', () => {
+    const p = new PermissionPolicy({ askBeforeSend: false });
+    const h = host(['api.local', 'new.example']);
+    const d = p.decide(run, { folderId: null }, h);
+    if (d.kind !== 'ask') throw new Error('expected ask');
+    p.record(d.approval, 'allow-once');
+    expect(p.decide(run, { folderId: null }, h)).toEqual({ kind: 'allow' });
+  });
+
+  it('always asks for an unresolvable host, even with a grant', () => {
+    const p = new PermissionPolicy({ askBeforeSend: false });
+    const d = p.decide(run, { folderId: null }, host([undefined]));
+    expect(d.kind === 'ask' && d.approval.kind === 'run' && d.approval.hosts).toEqual([{ host: '(unknown host)', isNew: true }]);
+    if (d.kind === 'ask') p.record(d.approval, 'allow-conversation');
+    expect(p.decide(run, { folderId: null }, host([undefined])).kind).toBe('ask');
+  });
+
+  it('askBeforeSend off runs known hosts without asking; text-parsed calls always ask and are never granted', () => {
+    expect(new PermissionPolicy({ askBeforeSend: false }).decide(run, { folderId: null }, host(['api.local']))).toEqual({ kind: 'allow' });
+    const p = new PermissionPolicy({ askBeforeSend: false });
+    const d = p.decide(run, { folderId: null }, host(['api.local']), { textParsed: true });
+    expect(d.kind === 'ask' && d.approval.kind === 'run' && d.approval.textParsed).toBe(true);
+    if (d.kind === 'ask') p.record(d.approval, 'allow-conversation');
+    expect(p.decide(run, { folderId: null }, host(['api.local']), { textParsed: true }).kind).toBe('ask');
+  });
+
+  it('a bad target is allowed through so the tool reports the error', () => {
+    const h = new FakeHost();
+    h.runPreview = () => { throw new Error('Unknown folder: nope'); };
+    expect(new PermissionPolicy({ askBeforeSend: true }).decide(run, { folderId: 'nope' }, h)).toEqual({ kind: 'allow' });
+  });
+
+  it('a Janus-edited script no longer adds a pseudo-host to run cards; the hosts are enforced at send time instead (F2)', () => {
+    const h = host(['api.local']);
+    h.editRequest('create.req.yml', [{ op: 'set', path: '/script', value: "env.set('base','evil.example')" }]);
+    const p = new PermissionPolicy({ askBeforeSend: true }, { touchedIds: ['create.req.yml'] });
+    const d = p.decide(run, { folderId: null }, h);
+    expect(d.kind === 'ask' && d.approval.kind === 'run' && d.approval.hosts).toEqual([{ host: 'api.local', isNew: false }]);
+    if (d.kind === 'ask') p.record(d.approval, 'allow-conversation');
+    // The conversation grant applies again for runs to approved hosts.
+    expect(p.decide(run, { folderId: null }, h)).toEqual({ kind: 'allow' });
+    // askBeforeSend off: a tainted run to known hosts runs without asking.
+    const q = new PermissionPolicy({ askBeforeSend: false }, { touchedIds: ['create.req.yml'] });
+    expect(q.decide(run, { folderId: null }, h)).toEqual({ kind: 'allow' });
+  });
+
+  it('after an env write a run to known hosts follows the usual rules, and new hosts still ask (F2)', () => {
+    const p = new PermissionPolicy({ askBeforeSend: false });
+    const h = host(['api.local']);
+    p.noteEnvWrite();
+    expect(p.decide(run, { folderId: null }, h)).toEqual({ kind: 'allow' });
+    expect(p.decide(run, { folderId: null }, host(['api.local', 'evil.example'])).kind).toBe('ask');
+    expect(p.decide(run, { folderId: null }, host(['api.local']), { textParsed: true }).kind).toBe('ask');
+  });
+
+  it('allowedRunHosts: known-host snapshot, hosts approved on run cards and on new-host send cards (F2)', () => {
+    const p = new PermissionPolicy({ askBeforeSend: true });
+    const h = host(['api.local', 'run.example', undefined], ['api.local']);
+    const d = p.decide(run, { folderId: null }, h);
+    if (d.kind !== 'ask') throw new Error('expected ask');
+    expect(p.allowedRunHosts().sort()).toEqual(['api.local']);
+    p.record(d.approval, 'allow-once');
+    p.record({ kind: 'new-host', requestId: 'x', host: 'send.example' }, 'allow-once');
+    p.record({ kind: 'new-host', requestId: 'x', host: "(chosen by the request's scripts)" }, 'allow-once');
+    p.record({ kind: 'new-host', requestId: 'x', host: 'denied.example' }, 'deny');
+    expect(p.allowedRunHosts().sort()).toEqual(['api.local', 'run.example', 'send.example']);
+    // A denied run approves nothing.
+    const q = new PermissionPolicy({ askBeforeSend: true });
+    const e = q.decide(run, { folderId: null }, h);
+    if (e.kind === 'ask') q.record(e.approval, 'deny');
+    expect(q.allowedRunHosts()).toEqual(['api.local']);
+  });
+
+  it('a run that uploads files always asks and lists them, whatever askBeforeSend or a grant says (F3)', () => {
+    const files = [{ requestName: 'Upload avatar', fileName: 'avatar.png' }];
+    const h = new FakeHost({ knownHosts: ['api.local'] });
+    h.runPreview = () => ({ label: 'folder users', count: 1, hosts: ['api.local'], janusEdited: 0, files });
+    const p = new PermissionPolicy({ askBeforeSend: false });
+    const d = p.decide(run, { folderId: null }, h);
+    expect(d).toEqual({ kind: 'ask', approval: { kind: 'run', target: 'folder users', count: 1, janusEdited: 0, hosts: [{ host: 'api.local', isNew: false }], files } });
+    if (d.kind === 'ask') p.record(d.approval, 'allow-conversation');
+    expect(p.decide(run, { folderId: null }, h).kind).toBe('ask');
+    // The file run's answer is not a conversation grant for other runs either.
+    const plain = new FakeHost({ knownHosts: ['api.local'] });
+    plain.runPreview = () => ({ label: 'x', count: 1, hosts: ['api.local'], janusEdited: 0, files: [] });
+    const g = new PermissionPolicy({ askBeforeSend: true });
+    const f = g.decide(run, { folderId: null }, h);
+    if (f.kind === 'ask') g.record(f.approval, 'allow-conversation');
+    expect(g.decide(run, { folderId: null }, plain).kind).toBe('ask');
+    expect(g.decide(run, { folderId: null }, plain)).toEqual({ kind: 'ask', approval: { kind: 'run', target: 'x', count: 1, janusEdited: 0, hosts: [{ host: 'api.local', isNew: false }] } });
+  });
+
+  it('de-duplicates ids before previewing', () => {
+    const h = new FakeHost();
+    let seen: unknown;
+    h.runPreview = (t) => { seen = t; return { label: 'x', count: 1, hosts: [], janusEdited: 0 }; };
+    new PermissionPolicy({ askBeforeSend: true }).decide(run, { ids: ['a', 'a'] }, h);
+    expect(seen).toEqual({ ids: ['a'] });
+  });
+});

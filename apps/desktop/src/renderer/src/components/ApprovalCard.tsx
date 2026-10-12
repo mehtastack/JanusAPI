@@ -25,6 +25,15 @@ function describe(a: ApprovalRequest): { title: string; buttons: { label: string
         buttons: [{ label: 'Apply', answer: 'allow-once' }, { label: 'Cancel', answer: 'deny' }],
       };
     }
+    case 'run':
+      return {
+        title: `Run ${a.target} (${a.count} ${a.count === 1 ? 'request' : 'requests'})?`,
+        // A run read from the model's text is always asked again, so it offers no conversation-wide allow.
+        // A run that uploads files is asked every time, so it offers no conversation-wide allow either.
+        buttons: a.textParsed || a.files?.length
+          ? [{ label: 'Allow once', answer: 'allow-once' }, { label: 'Deny', answer: 'deny' }]
+          : [{ label: 'Allow once', answer: 'allow-once' }, { label: 'Allow for this conversation', answer: 'allow-conversation' }, { label: 'Deny', answer: 'deny' }],
+      };
     case 'set-env-variable':
       return {
         title: `Change ${a.name}?`,
@@ -60,6 +69,18 @@ export function ApprovalCard({ approval, answer, onAnswer }: { approval: Approva
       <strong id={titleId}>{d.title}</strong>
       {d.body && <pre>{d.body}</pre>}
       {(approval.kind === 'send' || approval.kind === 'new-host') && approval.files && approval.files.length > 0 && <FileList files={approval.files} />}
+      {approval.kind === 'run' && (
+        <div className="approval-run">
+          {approval.hosts.length > 0 && <ul aria-label="Hosts">{approval.hosts.map((h) => <li key={h.host}>{h.isNew ? `${h.host} (new)` : h.host}</li>)}</ul>}
+          {approval.janusEdited > 0 && <p>{`${approval.janusEdited} ${approval.janusEdited === 1 ? 'has' : 'have'} unsaved Janus edits`}</p>}
+          {approval.files && approval.files.length > 0 && (
+            <div className="approval-files">
+              <p>{`Uploads ${approval.files.length} ${approval.files.length === 1 ? 'file' : 'files'}:`}</p>
+              <ul>{approval.files.map((f, i) => <li key={i}>{`${f.fileName} (${f.requestName})`}</li>)}</ul>
+            </div>
+          )}
+        </div>
+      )}
       {approval.contentHidden && <p className="muted">Part of this request is hidden because it looks like a secret.</p>}
       <div className="actions">
         {d.buttons.map((b, i) => (

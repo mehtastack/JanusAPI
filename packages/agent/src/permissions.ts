@@ -16,17 +16,28 @@ export type ApprovalRequest =
   | { kind: 'send'; requestId: string; method?: string; url?: string; host?: string; contentHidden?: true; textParsed?: true; files?: ApprovalFile[] }
   | { kind: 'new-host'; requestId: string; host: string; contentHidden?: true; files?: ApprovalFile[] }
   | { kind: 'create-request'; folderId: string; request: Partial<Request>; contentHidden?: true }
-  | { kind: 'set-env-variable'; name: string; secret: boolean; oldValue?: string; newValue: string; contentHidden?: true };
+  | { kind: 'set-env-variable'; name: string; secret: boolean; oldValue?: string; newValue: string; contentHidden?: true }
+  | { kind: 'run'; target: string; count: number; hosts: { host: string; isNew: boolean }[]; janusEdited: number; contentHidden?: true; textParsed?: true; files?: RunFile[] };
+
+/** A file a run would upload, as its approval card lists it: the request's name and the file's name (never a path or contents). */
+export interface RunFile { requestName: string; fileName: string }
 
 export type ApprovalAnswer = 'allow-once' | 'allow-conversation' | 'deny';
 export interface PermissionSettings { askBeforeSend: boolean }
 export type Decision = { kind: 'allow' } | { kind: 'ask'; approval: ApprovalRequest };
 
 const DOTS = '••••';
+const SCRIPT_HOST = "(chosen by the request's scripts)";
+const UNKNOWN_HOST = '(unknown host)';
 
 /** Decides tool permissions. One instance belongs to exactly one conversation. */
 export class PermissionPolicy {
   private sendsAllowed = false;
+  private runsAllowed = false;
+  /** Hosts the user approved by approving a run, for the rest of this conversation. */
+  private readonly approvedHosts = new Set<string>();
+  /** Hosts the user approved on a new-host send card; a Janus run may send to them too. */
+  private readonly sendApprovedHosts = new Set<string>();
   private readonly editedIds = new Set<string>();
   private readonly createdIds = new Set<string>();
   private envWritten: boolean;
@@ -53,6 +64,14 @@ export class PermissionPolicy {
   observe(state: { touchedIds?: Iterable<string>; tainted?: boolean }): void {
     for (const id of state.touchedIds ?? []) this.editedIds.add(id);
     if (state.tainted) this.envWritten = true;
+  }
+
+  /**
+   * The hosts a Janus run of this conversation may send to, enforced by the app at send time (after each request's scripts ran
+   * and its variables resolved): the known-host snapshot, hosts approved on run cards and hosts approved on new-host send cards.
+   */
+  allowedRunHosts(): string[] {
+    return [...new Set([...(this.snapshot ?? []), ...this.approvedHosts, ...this.sendApprovedHosts])];
   }
 
   noteCreated(id: string): void {
@@ -84,6 +103,35 @@ export class PermissionPolicy {
       }
     }
     if (tool.permission === 'auto') return { kind: 'allow' };
+    if (tool.def.name === 'run_requests') {
+      const target = 'ids' in input && Array.isArray(input.ids) ? { ids: [...new Set(input.ids as string[])] } : { folderId: (input.folderId ?? null) as string | null };
+      let preview;
+      try { preview = host.runPreview?.(target); } catch { return { kind: 'allow' }; } // the tool reports the bad target
+      if (!preview) return { kind: 'allow' }; // the tool reports that the app cannot run requests
+      const seen = new Set<string>();
+      const hosts: { host: string; isNew: boolean }[] = [];
+      let unresolved = false;
+      for (const h of preview.hosts) {
+        const name = h ?? UNKNOWN_HOST;
+        if (h === undefined) unresolved = true;
+        if (seen.has(name)) continue;
+        seen.add(name);
+        hosts.push({ host: name, isNew: h === undefined || (!this.snapshot.has(h) && !this.approvedHosts.has(h)) });
+      }
+      // Scripts or runtime variables may still redirect a request after this card: the app refuses, at send time, any Janus run
+      // send whose final host is not in allowedRunHosts(), so the card's hosts are what the run can reach.
+      const anyNew = hosts.some((x) => x.isNew);
+      // A run that uploads files is always asked, with the files listed, whatever askBeforeSend or an earlier grant says.
+      const files = preview.files ?? [];
+      if (files.length === 0 && !opts.textParsed && !anyNew && !unresolved && (!this.settings.askBeforeSend || this.runsAllowed)) return { kind: 'allow' };
+      return {
+        kind: 'ask',
+        approval: {
+          kind: 'run', target: preview.label, count: preview.count, hosts, janusEdited: preview.janusEdited,
+          ...(opts.textParsed ? { textParsed: true as const } : {}), ...(files.length > 0 ? { files } : {}),
+        },
+      };
+    }
     if (tool.def.name === 'create_request') {
       return { kind: 'ask', approval: { kind: 'create-request', folderId: String(input.folderId ?? ''), request: (input.request ?? {}) as Partial<Request> } };
     }
@@ -123,7 +171,7 @@ export class PermissionPolicy {
       if (draft?.script?.trim() || draft?.tests?.trim()) {
         // Scripts and tests can set session variables (env.set) that redirect every later send, so taint all of them.
         this.envWritten = true;
-        return { kind: 'ask', approval: { kind: 'new-host', requestId: id, host: "(chosen by the request's scripts)", ...withFiles } };
+        return { kind: 'ask', approval: { kind: 'new-host', requestId: id, host: SCRIPT_HOST, ...withFiles } };
       }
       for (const dest of [target, ...host.authHosts(id)]) {
         if (!dest || !this.snapshot.has(dest)) {
@@ -142,5 +190,11 @@ export class PermissionPolicy {
   record(approval: ApprovalRequest, answer: ApprovalAnswer): void {
     // A file send's answer is never a grant: each one is asked.
     if (approval.kind === 'send' && answer === 'allow-conversation' && !approval.textParsed && !approval.files?.length) this.sendsAllowed = true;
+    if (approval.kind === 'run' && answer !== 'deny' && !approval.textParsed) {
+      for (const h of approval.hosts) if (h.host !== UNKNOWN_HOST) this.approvedHosts.add(h.host);
+      // A file run's answer is never a grant: each one is asked.
+      if (answer === 'allow-conversation' && !approval.files?.length) this.runsAllowed = true;
+    }
+    if (approval.kind === 'new-host' && answer !== 'deny' && approval.host !== SCRIPT_HOST && approval.host !== UNKNOWN_HOST) this.sendApprovedHosts.add(approval.host);
   }
 }

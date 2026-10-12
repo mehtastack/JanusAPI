@@ -2,7 +2,7 @@ import {
   applyOps, buildSchemaFrom, findRequests, RequestSchema, schemaExcerptLines, schemaFromIntrospection, schemaSummary, typeDetail, validateDocument,
   type Collection, type EditOp, type GraphQLSchema, type GraphqlDiagnostic, type Match, type Request, type Secret,
 } from '@apijanus/core';
-import type { AgentHost, EnvironmentView, RequestSummary, SendOutcome } from '../src/host';
+import type { AgentHost, EnvironmentView, RequestSummary, RunPreview, RunResultsView, RunTarget, SendOutcome } from '../src/host';
 
 export const GQL_SDL = `type User { id: ID! name: String email: String }
 type Query { user(id: ID!): User users: [User!]! }
@@ -30,6 +30,9 @@ export class FakeHost implements AgentHost {
   created: { folderId: string; request: Request; id: string }[] = [];
   envWrites: { name: string; value: string; secret: boolean }[] = [];
   sends: string[] = [];
+  lastRun?: () => RunResultsView | undefined;
+  runRequests?: (target: RunTarget, opts: { stopOnFailure: boolean; allowedHosts?: string[] }, signal: AbortSignal) => Promise<RunResultsView>;
+  runPreview?: (target: RunTarget) => RunPreview;
   private open: string | null;
   private gql?: GraphQLSchema;
 

@@ -39,4 +39,18 @@ describe('approval card', () => {
     expect(screen.getByText('logo.png (12 B) as img')).toBeTruthy();
     expect(screen.getByText('in this collection: files/logo.png')).toBeTruthy();
   });
+
+  it('lists the files a run uploads by file and request name, and offers no conversation-wide allow (F3)', () => {
+    render(<ApprovalCard approval={{ kind: 'run', target: 'folder users', count: 3, janusEdited: 0, hosts: [{ host: 'api.local', isNew: false }], files: [
+      { requestName: 'Upload avatar', fileName: 'avatar.png' }, { requestName: 'Put blob', fileName: 'blob.bin' },
+    ] }} onAnswer={() => {}} />);
+    expect(screen.getByText('Uploads 2 files:')).toBeTruthy();
+    expect(screen.getByText('avatar.png (Upload avatar)')).toBeTruthy();
+    expect(screen.getByText('blob.bin (Put blob)')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Allow once' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Allow for this conversation' })).toBeNull();
+    cleanup();
+    render(<ApprovalCard approval={{ kind: 'run', target: 'x', count: 1, janusEdited: 0, hosts: [], files: [{ requestName: 'One', fileName: 'a.txt' }] }} onAnswer={() => {}} />);
+    expect(screen.getByText('Uploads 1 file:')).toBeTruthy();
+  });
 });

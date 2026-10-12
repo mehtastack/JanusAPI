@@ -34,6 +34,29 @@ describe('janus service', () => {
     expect(JSON.stringify(j.provider.requests[1].messages)).toContain('first');
   });
 
+  it("keeps run memory per conversation, so a later turn's card compares the re-run with the first run (F1)", async () => {
+    const j = await janusSetup([
+      callTool('run_requests', { folderId: null }, 'r1'), say('It fails.'),
+      callTool('run_requests', { ids: ['get.req.yml'] }, 'r2'), say('Fixed.'),
+    ], { provider: 'openai', model: 'fake', askBeforeSend: false });
+    await j.call('collection:open');
+    const views = [
+      { runId: 'run-1', target: 'all', passed: 0, failed: 1, errored: 0, skipped: 0, stopped: false, finishedAt: '2026-10-12T10:00:00Z', items: [{ id: 'get.req.yml', name: 'Get', outcome: 'failed', status: 401, tests: { passed: 0, total: 0 } }] },
+      { runId: 'run-2', target: '1 request', passed: 1, failed: 0, errored: 0, skipped: 0, stopped: false, finishedAt: '2026-10-12T10:01:00Z', items: [{ id: 'get.req.yml', name: 'Get', outcome: 'passed', status: 200, tests: { passed: 0, total: 0 } }] },
+    ];
+    j.session.setJanusRunner(async () => views.shift()!);
+    const answerAll = (turnId: string) => vi.waitFor(async () => {
+      for (const e of j.events) if (e.turnId === turnId && e.event.type === 'approval') await j.call('janus:approve', { turnId, approvalId: e.event.callId, answer: 'allow-once' }).catch(() => undefined);
+      expect(j.events.some((e) => e.turnId === turnId && e.event.type === 'done')).toBe(true);
+    }, { timeout: 4000 });
+    const first = await j.call<{ conversationId: string; turnId: string }>('janus:send', { conversationId: null, text: 'run all', openRequestId: null });
+    await answerAll(first.turnId);
+    const second = await j.call<{ conversationId: string; turnId: string }>('janus:send', { conversationId: first.conversationId, text: 'continue', openRequestId: null });
+    await answerAll(second.turnId);
+    const card = j.events.find((e) => e.turnId === second.turnId && e.event.type === 'triage')?.event.card;
+    expect(card).toMatchObject({ runIds: ['run-1', 'run-2'], before: { failed: 1 }, after: { passed: 1 } });
+  });
+
   it('bridges approvals through janus:approve and honours deny', async () => {
     const j = await janusSetup([callTool('send_request', {}, 's1'), say('ok')]);
     await j.call('collection:open');

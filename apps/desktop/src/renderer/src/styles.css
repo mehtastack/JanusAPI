@@ -155,6 +155,25 @@ code, pre, kbd { font-family: var(--mono); }
 .approval { display: flex; flex-direction: column; gap: 10px; max-width: 620px; border: 1px solid var(--accent); border-radius: var(--radius-lg); padding: 12px 14px; background: var(--panel); }
 .approval pre { max-height: 160px; overflow: auto; margin: 0; padding: 8px 10px; border-radius: var(--radius); background: var(--bg); font: 12px var(--mono); }
 .approval .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.approval-run ul { margin: 0; padding-left: 18px; }
+.approval-run p { margin: 4px 0 0; }
+.triage-card { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px 12px; margin: 8px 0; background: var(--panel); }
+.triage-totals { font-weight: 600; margin: 0 0 6px; }
+.triage-causes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.triage-title { margin: 0; font-weight: 600; }
+.triage-status { margin: 2px 0; font-size: 12px; font-weight: 600; }
+.triage-status.fixed { color: var(--ok); }
+.triage-status.needs-you, .triage-status.unknown { color: var(--warn); }
+.triage-status.unfixed { color: var(--danger); }
+.triage-fix { margin: 2px 0; color: var(--muted); }
+.triage-requests { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.janus-run-progress { margin: 6px 0; color: var(--muted); }
+.runner-cause, .runner-change, .runner-source { font: 11px var(--font); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.runner-source { margin-left: 8px; }
+.runner .row .row-name { display: flex; align-items: center; gap: 8px; min-width: 0; font: inherit; }
+.runner .row .row-name button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runner-cause { flex: 0 1 auto; min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.runner-change { flex: 0 0 auto; }
 .welcome { margin: auto; width: min(460px, 90%); display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
 .welcome > button { height: 44px; }
 .welcome > p { margin: 0 0 8px; color: var(--muted); }

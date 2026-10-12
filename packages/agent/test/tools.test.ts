@@ -3,17 +3,17 @@ import { createTools, BODY_LIMIT } from '../src/tools';
 import { selectPath } from '../src/jsonpath';
 import { FakeHost, fakeHost, req, GQL_SDL, type FakeHostOptions } from './helpers';
 import type { Request } from '@apijanus/core';
-import type { AgentHost } from '../src/host';
+import type { AgentHost, RunResultsView } from '../src/host';
 
 const tools = createTools();
 const tool = (name: string) => tools.find((t) => t.def.name === name)!;
 const ctx = (host: FakeHost) => ({ host, signal: new AbortController().signal, mask: (s: string) => s });
 
 describe('tool definitions', () => {
-  it('has the twelve tools with the spec permissions and JSON schemas', () => {
+  it('has the thirteen tools with the spec permissions and JSON schemas', () => {
     expect(tools.map((t) => [t.def.name, t.permission])).toEqual([
       ['list_requests', 'auto'], ['find_requests', 'auto'], ['get_request', 'auto'], ['get_environment', 'auto'], ['get_last_response', 'auto'],
-      ['edit_request', 'auto'], ['send_request', 'send'], ['create_request', 'approval'], ['set_env_variable', 'approval'], ['get_run_results', 'auto'],
+      ['edit_request', 'auto'], ['send_request', 'send'], ['create_request', 'approval'], ['set_env_variable', 'approval'], ['get_run_results', 'auto'], ['run_requests', 'run'],
       ['get_graphql_schema', 'auto'], ['get_history', 'auto'],
     ]);
     for (const t of tools) {
@@ -319,5 +319,87 @@ describe('GraphQL tools', () => {
     expect(good).not.toHaveProperty('graphqlDiagnostics');
     const rest = await tool('edit_request').run({ id: 'rest.req.yml', ops: [{ op: 'set', path: '/url', value: '/r2' }] }, ctx(host));
     expect(rest).not.toHaveProperty('graphqlDiagnostics');
+  });
+});
+
+describe('run_requests', () => {
+  const tool = createTools().find((t) => t.def.name === 'run_requests')!;
+  const view: RunResultsView = {
+    runId: 'r1', target: 'folder users', passed: 0, failed: 2, errored: 0, skipped: 0, stopped: false, finishedAt: '2026-10-12T10:00:00Z',
+    items: [
+      { id: 'a', name: 'A', outcome: 'failed', status: 401, tests: { passed: 0, total: 1 } },
+      { id: 'b', name: 'B', outcome: 'failed', status: 401, tests: { passed: 0, total: 1 } },
+    ],
+  };
+  const ctx = (host: FakeHost) => ({ host, signal: new AbortController().signal, mask: (s: string) => s });
+
+  it('has permission run and accepts exactly one of folderId and ids', () => {
+    expect(tool.permission).toBe('run');
+    expect(tool.def.inputSchema.type).toBe('object');
+    expect(tool.schema.safeParse({ folderId: null }).success).toBe(true);
+    expect(tool.schema.safeParse({ ids: ['a'] }).success).toBe(true);
+    expect(tool.schema.safeParse({}).success).toBe(false);
+    expect(tool.schema.safeParse({ folderId: 'x', ids: ['a'] }).success).toBe(false);
+    expect(tool.schema.safeParse({ ids: [] }).success).toBe(false);
+    expect(tool.schema.safeParse({ ids: Array.from({ length: 201 }, (_, i) => `r${i}`) }).success).toBe(false);
+  });
+
+  it('runs through the host and returns the results with groups', async () => {
+    const host = new FakeHost();
+    let seen: unknown;
+    host.runPreview = () => ({ label: 'x', count: 1, hosts: [], janusEdited: 0 });
+    host.runRequests = async (target, opts) => { seen = { target, opts }; return view; };
+    const out = (await tool.run({ ids: ['a', 'b', 'a'] }, ctx(host))) as { groups: { key: string }[]; runId: string };
+    expect(seen).toEqual({ target: { ids: ['a', 'b'] }, opts: { stopOnFailure: false } });
+    expect(out.runId).toBe('r1');
+    expect(out.groups[0]!.key).toBe('status:401');
+  });
+
+  it('forwards the hosts the conversation approved, for the app to enforce at send time (F2)', async () => {
+    const host = new FakeHost();
+    let seen: unknown;
+    host.runPreview = () => ({ label: 'x', count: 1, hosts: [], janusEdited: 0 });
+    host.runRequests = async (_target, opts) => { seen = opts; return view; };
+    await tool.run({ folderId: null, stopOnFailure: true }, { ...ctx(host), allowedHosts: ['api.local', 'run.example'] });
+    expect(seen).toEqual({ stopOnFailure: true, allowedHosts: ['api.local', 'run.example'] });
+  });
+
+  it('refuses without runPreview, and stops on a preview error before running', async () => {
+    const host = new FakeHost();
+    let ran = 0;
+    host.runRequests = async () => { ran++; return view; };
+    await expect(tool.run({ folderId: null }, ctx(host))).rejects.toThrow('This app cannot run requests for Janus');
+    host.runPreview = () => { throw new Error('Unknown request: x'); };
+    await expect(tool.run({ ids: ['x'] }, ctx(host))).rejects.toThrow('Unknown request: x');
+    expect(ran).toBe(0);
+  });
+
+  it('explains when the app cannot run requests', async () => {
+    await expect(tool.run({ folderId: null }, ctx(new FakeHost()))).rejects.toThrow('This app cannot run requests for Janus');
+  });
+});
+
+describe('get_run_results groups', () => {
+  it('adds deterministic groups to the latest run', async () => {
+    const host = new FakeHost();
+    host.lastRun = () => ({ target: 'all', passed: 0, failed: 1, errored: 0, skipped: 0, stopped: false, finishedAt: 'x',
+      items: [{ id: 'a', name: 'A', outcome: 'failed', status: 500, tests: { passed: 0, total: 0 } }] });
+    const t = createTools().find((x) => x.def.name === 'get_run_results')!;
+    const out = (await t.run({}, { host, signal: new AbortController().signal, mask: (s: string) => s })) as { groups: { key: string }[] };
+    expect(out.groups.map((g) => g.key)).toEqual(['status:500']);
+  });
+});
+
+describe('run results size cap', () => {
+  it('caps group ids so thousands of failures still fit in 8 KB', async () => {
+    const host = new FakeHost();
+    const items = Array.from({ length: 3000 }, (_, i) => ({ id: `folder/request-number-${i}.req.yml`, name: `R${i}`, outcome: 'failed', status: 401, tests: { passed: 0, total: 1 } }));
+    host.lastRun = () => ({ target: 'all', passed: 0, failed: 3000, errored: 0, skipped: 0, stopped: false, finishedAt: 'x', items });
+    const t = createTools().find((x) => x.def.name === 'get_run_results')!;
+    const out = (await t.run({}, { host, signal: new AbortController().signal, mask: (s: string) => s })) as { groups: { count: number; ids: string[]; moreIds?: number }[] };
+    expect(JSON.stringify(out).length).toBeLessThanOrEqual(8192);
+    expect(out.groups[0]!.count).toBe(3000);
+    expect(out.groups[0]!.ids.length).toBe(20);
+    expect(out.groups[0]!.moreIds).toBe(2980);
   });
 });

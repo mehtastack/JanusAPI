@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Masker, type Match, type Secret } from '@apijanus/core';
 import {
   ConversationStore, PermissionPolicy, compactHistory, promptProfileFor, runAgent, runAssist,
-  type AgentEvent, type AgentHost, type ApprovalAnswer, type Conversation, type LLMProvider, type ModelInfo, type PromptProfile,
+  type AgentEvent, type AgentHost, type ApprovalAnswer, type Conversation, type LLMProvider, type ModelInfo, type PromptProfile, type RunResultsView,
 } from '@apijanus/agent';
 import { schemas } from './contract';
 import type { Handler } from './router';
@@ -31,6 +31,8 @@ interface Live {
   malformed: number;
   /** Candidates the last assist turn found, so the very next turn ("the second one") can still name them. */
   offered: Match[];
+  /** Every Janus run of this conversation in this session, in order: a triage card compares the first with the latest. */
+  runs: RunResultsView[];
   root: string;
   epoch: number;
 }
@@ -166,7 +168,7 @@ export class JanusService {
           { get askBeforeSend() { return ai.settings.askBeforeSend; } },
           { touchedIds: this.d.session.untrustedIds(), startTainted: this.d.session.janusInfluencedRuntime() },
         );
-        l = { conv, store, policy, malformed: 0, offered: [], root, epoch };
+        l = { conv, store, policy, malformed: 0, offered: [], runs: [], root, epoch };
         this.live.set(conv.id, l);
       } else {
         host = this.d.session.agentHost(i.openRequestId);
@@ -251,6 +253,7 @@ export class JanusService {
         ask, extraCandidates: carried, promptProfile: mode.profile,
       }) : await runAgent({
         provider, model, temperature, host, policy: l.policy, promptProfile: mode.profile,
+        runs: l.runs,
         history,
         userText: text,
         signal: turn.ac.signal,

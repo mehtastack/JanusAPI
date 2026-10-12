@@ -334,3 +334,62 @@ describe('agent host', () => {
     });
   });
 });
+
+describe('agent host runs', () => {
+  it('previews the whole collection: label, count, hosts and Janus-edited drafts', async () => {
+    const { call, session } = await setup();
+    await call('collection:open');
+    const host = session.agentHost(null);
+    let p = host.runPreview!({ folderId: null });
+    expect(p.label).toBe('whole collection');
+    expect(p.count).toBe(session.runPlan(null).ids.length);
+    expect(p.hosts).toContain(host.targetHost('get.req.yml'));
+    expect(p.janusEdited).toBe(0);
+    const ws = (session as unknown as { ws: { edit(id: string, ops: unknown[], s: string): unknown } }).ws;
+    ws.edit('get.req.yml', [{ op: 'set', path: '/url', value: '/janus' }], 'janus');
+    p = host.runPreview!({ ids: ['get.req.yml'] });
+    expect(p).toMatchObject({ label: '1 request', count: 1, janusEdited: 1 });
+  });
+
+  it('lists the files a run would upload: request name and file name only, enabled file fields and binary bodies (F3)', async () => {
+    const { call, session } = await setup();
+    await call('collection:open');
+    const host = session.agentHost(null);
+    expect(host.runPreview!({ folderId: null }).files).toEqual([]);
+    const ws = (session as unknown as { ws: { edit(id: string, ops: unknown[], s: string): unknown } }).ws;
+    ws.edit('get.req.yml', [{ op: 'set', path: '/body', value: { type: 'multipart', fields: [
+      { name: 'a', value: 'x' },
+      { name: 'doc', value: '', kind: 'file', file: { path: 'files/report.pdf' } },
+      { name: 'off', value: '', kind: 'file', enabled: false, file: { path: '/home/me/secret/off.txt' } },
+    ] } }], 'user');
+    const p = host.runPreview!({ ids: ['get.req.yml'] });
+    expect(p.files).toEqual([{ requestName: 'Get', fileName: 'report.pdf' }]);
+    expect(JSON.stringify(p)).not.toContain('files/report.pdf');
+    ws.edit('get.req.yml', [{ op: 'set', path: '/body', value: { type: 'binary', file: { path: '/abs/dir/blob.bin' } } }], 'user');
+    expect(host.runPreview!({ ids: ['get.req.yml'] }).files).toEqual([{ requestName: 'Get', fileName: 'blob.bin' }]);
+  });
+
+  it('rejects bad targets in the preview', async () => {
+    const { call, session } = await setup();
+    await call('collection:open');
+    const host = session.agentHost(null);
+    expect(() => host.runPreview!({ ids: ['nope.req.yml'] })).toThrow('Unknown request: nope.req.yml');
+    expect(() => host.runPreview!({ ids: [] })).toThrow('There are no requests to run');
+    expect(() => host.runPreview!({ folderId: 'nofolder' })).toThrow('Folder nofolder is not in this collection');
+  });
+
+  it('runs through the runner set at startup', async () => {
+    const { call, session } = await setup();
+    await call('collection:open');
+    const seen: unknown[] = [];
+    const host = session.agentHost(null);
+    await expect(host.runRequests!({ ids: ['get.req.yml'] }, { stopOnFailure: false }, new AbortController().signal)).rejects.toThrow();
+    session.setJanusRunner(async (target, opts) => {
+      seen.push({ target, opts });
+      return { passed: 1 } as never;
+    });
+    const view = await host.runRequests!({ ids: ['get.req.yml'] }, { stopOnFailure: false }, new AbortController().signal);
+    expect(view.passed).toBe(1);
+    expect(seen).toEqual([{ target: { ids: ['get.req.yml'] }, opts: { stopOnFailure: false } }]);
+  });
+});

@@ -1,6 +1,8 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { EditOp, Match } from '@apijanus/core';
 import type { ApprovalAnswer, ApprovalRequest, Message } from '@apijanus/agent';
+// Deep import on purpose: the package entry re-exports the providers (LLM SDKs), which must not reach the renderer bundle.
+import { cardFromText, stripTriageBlock, type TriageCard } from '@apijanus/agent/src/triage';
 import type { AiSettings, AppFeatures, Channel, ChannelMap, AiState, CodeSnippetResult, ConfigScripts, SnippetLanguage, CookieEdit, CookieKey, CookieListView, GraphqlCompletion, GraphqlDiagnostic, GraphqlPrettifyResult, GraphqlSchemaStatus, GraphqlTypeDoc, CollectionSnapshot, HistoryEntry, HistoryListQuery, HistoryPage, ImportKind, ImportPlanView, ImportResult, ImportSource, ImportTarget, JwtPreview, ModelOption, JanusConversationSummary, JanusEventEnvelope, RequestView, DataFileView, RunStartOptions, RunView, RunnerItemView, RunnerSummaryView, RunnerEventEnvelope, UpdateState, UploadChoice, UploadStatus, WorkspaceEventEnvelope } from '../../shared/api';
 import type { Api } from './api';
 import { RUN_DROPPED_TEXT, RunViewRetention, dropRunView } from '../../shared/run-retention';
@@ -17,6 +19,7 @@ export type DockItem =
   | { kind: 'step'; callId: string; name: string; ok?: boolean; summary?: string }
   | { kind: 'approval'; approvalId: string; turnId: string; approval: ApprovalRequest; answer?: ApprovalAnswer }
   | { kind: 'edit'; requestId: string; ops: EditOp[] }
+  | { kind: 'triage'; card: TriageCard }
   | { kind: 'error'; message: string; retryable: boolean }
   | { kind: 'notice'; text: string; level?: 'info' | 'error' };
 export type DockState = 'closed' | 'open' | 'expanded';
@@ -74,10 +77,19 @@ export interface RunnerState {
   iterationCount: number;
   rowLabels: string[];
   lastIteration: number;
+  /** Who started the shown run: this window's user, or Janus (started in main; adopted from its start event). */
+  startedBy: 'user' | 'janus';
+  /** The shown run's target label, from its start event (user or Janus run); null before any run. */
+  runLabel: string | null;
+  /** Per request id: the cause title from the latest triage card that covers the shown run. */
+  causes: Record<string, string>;
+  /** Per request id: "before → after" from the latest triage card whose after-run is the shown run. */
+  changes: Record<string, string>;
 }
 const initialRunner = (): RunnerState => ({
   target: null, stopOnFailure: false, runId: null, running: false, ids: [], items: {}, current: null, summary: null,
   data: null, iterations: null, delayMs: 0, iterationCount: 1, rowLabels: [], lastIteration: 0,
+  startedBy: 'user', runLabel: null, causes: {}, changes: {},
 });
 
 /** Remembered runner settings: per collection, in localStorage, only the data file's path and the numbers (never data). */
@@ -356,7 +368,10 @@ function messagesToItems(messages: Message[]): DockItem[] {
   for (const m of messages) {
     if (m.role === 'user') items.push({ kind: 'user', text: m.content });
     else if (m.role === 'assistant') {
-      if (m.text) items.push({ kind: 'assistant', text: m.text });
+      const card = m.text ? cardFromText(m.text) : undefined;
+      const text = card ? stripTriageBlock(m.text) : m.text;
+      if (text) items.push({ kind: 'assistant', text });
+      if (card) items.push({ kind: 'triage', card });
       for (const c of m.toolCalls) {
         const ok = results.get(c.id);
         items.push({ kind: 'step', callId: c.id, name: c.name, ...(ok !== undefined ? { ok } : {}) });
@@ -365,6 +380,8 @@ function messagesToItems(messages: Message[]): DockItem[] {
   }
   return items;
 }
+
+export const messagesToItemsForTest = messagesToItems;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -449,6 +466,20 @@ export function createAppStore(api: Api): AppStore {
     const applyJanusEvent = (env: JanusEventEnvelope) => {
       const e = env.event;
       switch (e.type) {
+        case 'triage':
+          patchJanus((j) => {
+            const items = j.items.map((it, n) => (n === j.items.length - 1 && it.kind === 'assistant' ? { ...it, text: stripTriageBlock(it.text) } : it));
+            return { items: [...items, { kind: 'triage' as const, card: e.card }] };
+          });
+          set((s) => {
+            if (!s.runner.runId || !e.card.runIds.includes(s.runner.runId)) return {};
+            const causes: Record<string, string> = {};
+            for (const c of e.card.causes) for (const id of c.requestIds) causes[id] ??= c.title;
+            const isAfter = e.card.runIds.at(-1) === s.runner.runId && e.card.runIds.length > 1;
+            const changes = isAfter ? Object.fromEntries(e.card.changes.map((c) => [c.id, `${c.before} → ${c.after}`])) : {};
+            return { runner: { ...s.runner, causes, changes } };
+          });
+          break;
         case 'mode':
           patchJanus((j) => {
             const entering = e.mode === 'assist' && j.mode?.mode !== 'assist';
@@ -553,7 +584,8 @@ export function createAppStore(api: Api): AppStore {
       switch (e.type) {
         case 'start':
           retention = new RunViewRetention();
-          set((s) => ({ runner: { ...s.runner, ids: e.ids, items: {}, current: null, summary: null, iterationCount: e.iterations ?? 1, rowLabels: e.rowLabels ?? [], lastIteration: 0 } }));
+          set((s) => ({ runner: { ...s.runner, ids: e.ids, items: {}, current: null, summary: null, iterationCount: e.iterations ?? 1, rowLabels: e.rowLabels ?? [], lastIteration: 0,
+            runLabel: e.target.label, startedBy: e.source ?? 'user', ...(e.source === 'janus' ? {} : { causes: {}, changes: {} }) } }));
           break;
         case 'item-start':
           set((s) => ({ runner: { ...s.runner, current: e.index, lastIteration: Math.max(s.runner.lastIteration, e.iteration ?? 1) } }));
@@ -578,6 +610,10 @@ export function createAppStore(api: Api): AppStore {
       if (pendingRunEvents) {
         pendingRunEvents.push(env);
         return;
+      }
+      // A run Janus started in main: this window never called run:start, so adopt it unless it is running its own.
+      if (env.event.type === 'start' && env.event.source === 'janus' && env.runId !== get().runner.runId && !get().runner.running) {
+        set((s) => ({ runner: { ...s.runner, runId: env.runId, running: true, startedBy: 'janus', causes: {}, changes: {} } }));
       }
       if (env.runId !== get().runner.runId) return;
       applyRunEvent(env);

@@ -1,4 +1,13 @@
 import type { EditOp, FileInfo, GraphqlDiagnostic, HistoryEntry, HistoryQuery, HistorySummary, Match, Request, Secret } from '@apijanus/core';
+import type { FailureGroup } from './triage';
+
+export type RunTarget = { folderId: string | null } | { ids: string[] };
+/**
+ * What a run would do, for the approval card: a label, how many sends, every destination host (undefined when unresolvable), how
+ * many carry unsaved Janus edits, and the files its requests upload (enabled multipart file fields and binary bodies; the
+ * request's name and the file's name only, never a path or contents).
+ */
+export interface RunPreview { label: string; count: number; hosts: (string | undefined)[]; janusEdited: number; files?: { requestName: string; fileName: string }[] }
 
 export type { Match } from '@apijanus/core';
 
@@ -17,6 +26,10 @@ export interface SendOutcome {
 }
 
 export interface RunResultsView {
+  /** Which run this is, so a triage card can name the runs it compares. */
+  runId?: string;
+  /** The failures grouped by cause (status, failing test, or error), computed by fixed rules; at most 20 groups. */
+  groups?: FailureGroup[];
   target: string; passed: number; failed: number; errored: number; skipped: number; stopped: boolean;
   /** When the run ended (ISO 8601), so the agent can tell how old the results are. */
   finishedAt: string;
@@ -83,6 +96,16 @@ export interface AgentHost {
   secrets(): Secret[];
   /** The latest collection run's results, already masked and without response bodies; undefined before any run. */
   lastRun?(): RunResultsView | undefined;
+  /**
+   * Runs a folder (null: the whole collection) or a list of request ids on the app's runner, with unsaved drafts, and resolves with
+   * the masked results once the run ends. Rejects with a user-facing message when it cannot start.
+   * allowedHosts: the hosts the user approved for this conversation. Every send of the run, once its scripts ran and its variables
+   * resolved, must go only to these hosts (its URL and its OAuth token/auth URLs); any other send is refused before a byte is sent
+   * and shows as errored. Without it, the host uses its known hosts.
+   */
+  runRequests?(target: RunTarget, opts: { stopOnFailure: boolean; allowedHosts?: string[] }, signal: AbortSignal): Promise<RunResultsView>;
+  /** What runRequests(target) would send, for the approval card. Throws a user-facing Error for an unknown folder or ids. */
+  runPreview?(target: RunTarget): RunPreview;
   /**
    * The cached GraphQL schema of a GraphQL request as text: a summary, or one type when `type` is given. Null when no schema is
    * cached. Never fetches (only the user fetches). Unmasked: the tool masks it.

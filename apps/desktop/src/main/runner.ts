@@ -7,8 +7,21 @@ import { RunViewRetention, dropRunView } from '../shared/run-retention';
 import { schemas } from './contract';
 import type { Handler } from './router';
 import type { AppSession } from './session';
-import type { RunResultsView } from '@apijanus/agent';
+import type { RunResultsView, RunTarget } from '@apijanus/agent';
 import type { AppEvent, DataFileView, RunStartOptions, RunnerEvent, RunnerEventEnvelope, RunnerItemView, RunnerSummaryView, RunnerTarget } from '../shared/api';
+
+/** What only the main process can ask of a run: a subset of the plan's requests, who started it, and who waits for its end. */
+export interface RunInternalOptions {
+  ids?: string[];
+  source?: 'user' | 'janus';
+  /**
+   * A Janus run only: the hosts its conversation approved. Each send, once its scripts ran and its variables resolved, is refused
+   * (and shows as errored) unless its URL and OAuth hosts are all in this list.
+   */
+  allowedHosts?: string[];
+  /** Settled by this run alone: resolved with its summary, or rejected when it ends without one. */
+  waiter?: { resolve(s: RunnerSummaryView): void; reject(e: Error): void };
+}
 
 interface ActiveRun { runId: string; ac: AbortController; root: string }
 
@@ -89,7 +102,28 @@ export class RunService {
     };
   }
 
-  private async start(i: RunStartOptions): Promise<{ runId: string }> {
+  /** Starts a run for Janus and resolves with its masked results once it ends; the signal stops it. */
+  async runForJanus(target: RunTarget, opts: { stopOnFailure: boolean; allowedHosts?: string[] }, signal: AbortSignal): Promise<RunResultsView> {
+    if (this.d.session.root() === null) throw new Error('No collection is open');
+    const folderId = 'folderId' in target ? target.folderId : null;
+    const ids = 'ids' in target ? target.ids : undefined;
+    if (ids?.length === 0) throw new Error('There are no requests to run');
+    if (signal.aborted) throw new Error('The run was stopped before it started');
+    // The waiter belongs to the run it starts; no other run can settle it.
+    let waiter!: NonNullable<RunInternalOptions['waiter']>;
+    const done = new Promise<RunnerSummaryView>((resolve, reject) => { waiter = { resolve, reject }; });
+    const { runId } = await this.start({ folderId, stopOnFailure: opts.stopOnFailure }, { ...(ids ? { ids } : {}), source: 'janus', allowedHosts: opts.allowedHosts ?? [...this.d.session.agentHost(null).knownHosts()], waiter });
+    const onAbort = () => { if (this.active?.runId === runId) this.active.ac.abort(); };
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    try {
+      return { ...toRunResultsView(await done), runId };
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
+  }
+
+  private async start(i: RunStartOptions, internal: RunInternalOptions = {}): Promise<{ runId: string }> {
     const session = this.d.session;
     if (session.root() === null) throw new Error('No collection is open');
     if (this.active) throw new Error('A run is already in progress');
@@ -106,9 +140,18 @@ export class RunService {
     if (session.root() !== rootAtStart) throw new Error('The collection changed; run again');
     if (this.active) throw new Error('A run is already in progress');
     const plan = session.runPlan(i.folderId);
+    if (internal.ids) {
+      const wanted = new Set(internal.ids);
+      const known = new Set(plan.ids);
+      for (const id of wanted) if (!known.has(id)) throw new Error(`Unknown request: ${id}`);
+      plan.ids = plan.ids.filter((id) => wanted.has(id));
+      plan.label = `${plan.ids.length} ${plan.ids.length === 1 ? 'request' : 'requests'}`;
+    }
     const iterations = i.iterations ?? (table ? Math.min(table.rows.length, RUN_LIMITS.iterations) : 1);
     // Each row's label, masked with what the session knows now (a secret-looking first column is a placeholder).
     const labels = table ? (() => { const m = session.collectionMasker(); return table.rows.map((row) => rowLabel(row, table.columns, m)); })() : undefined;
+    // Janus is never given an empty run to show: nothing is sent and nothing starts.
+    if (internal.source === 'janus' && plan.ids.length === 0) throw new Error('There are no requests to run');
     const perIteration = plan.ids.length;
     const target: RunnerTarget = { folderId: i.folderId || null, label: plan.label };
     const run: ActiveRun = { runId: randomUUID(), ac: new AbortController(), root: plan.root };
@@ -133,8 +176,9 @@ export class RunService {
     // The finish() result of the request running now: its masker and whether it was cancelled.
     let current: { id: string; masker: Masker; cancelled: boolean; request: Request } | undefined;
     let release: (() => void) | undefined;
+    let settled = false;
 
-    emit({ type: 'start', target, ids: plan.ids, iterations, ...(labels ? { rowLabels: labels } : {}) });
+    emit({ type: 'start', target, ids: plan.ids, iterations, ...(labels ? { rowLabels: labels } : {}), source: internal.source ?? 'user' });
     const flat = (iteration: number, index: number) => (iteration - 1) * perIteration + index;
     const labelOf = (iteration: number) => (labels ? labels[(iteration - 1) % labels.length] : undefined);
     const onEvent = (e: RunCollectionEvent) => {
@@ -177,8 +221,10 @@ export class RunService {
         items,
       };
       if (!live()) return;
+      settled = true;
       // An empty target has nothing to report: it keeps the last real run as the latest summary.
       if (plan.ids.length > 0) this.latestByRoot.set(run.root, summary);
+      internal.waiter?.resolve(summary);
       emit({ type: 'done', summary });
     };
 
@@ -191,7 +237,8 @@ export class RunService {
         const entry = session.runEntry(id);
         if (!entry) return { skip: 'no longer exists' };
         if (entry.error) return { skip: 'invalid file' };
-        const prepared = session.prepareRun(id, runtimeVars, signal, { source: 'runner', iteration });
+        const allowedHosts = internal.source === 'janus' ? internal.allowedHosts ?? [] : undefined;
+        const prepared = session.prepareRun(id, runtimeVars, signal, { source: 'runner', iteration, ...(allowedHosts ? { allowedHosts } : {}) });
         release = prepared.release;
         return {
           request: prepared.request,
@@ -220,6 +267,8 @@ export class RunService {
       ...(i.delayMs ? { delayMs: i.delayMs } : {}),
     }).catch(() => undefined).finally(() => {
       if (this.active === run) this.active = undefined;
+      // Ended without a summary (the collection closed or changed): whoever waits is told.
+      if (!settled) internal.waiter?.reject(new Error('The run is no longer valid: the collection changed'));
     });
     return { runId: run.runId };
   }

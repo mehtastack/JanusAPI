@@ -6,6 +6,8 @@
 export interface FenceTracker {
   /** Whether a fence is open (before the next line is fed). */
   readonly open: boolean;
+  /** The open fence's marker (e.g. ``` or ~~~~), or undefined when no fence is open. */
+  readonly marker: string | undefined;
   /** Feeds the next line (a trailing \r is ignored); true when it is a fence line, which updates the state. */
   feed(line: string): boolean;
 }
@@ -19,6 +21,7 @@ export function fenceTracker(prefix = ' {0,3}'): FenceTracker {
   let fence: string | null = null;
   return {
     get open() { return fence !== null; },
+    get marker() { return fence ?? undefined; },
     feed(line) {
       const f = re.exec(line.endsWith('\r') ? line.slice(0, -1) : line);
       if (!f) return false;

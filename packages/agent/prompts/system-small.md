@@ -49,3 +49,13 @@ User: get the price of product 4 with GraphQL
 3. edit_request {"id": "graphql/get-product.req.yml", "ops": [{"op": "set", "path": "/body/query", "value": "query GetProduct($id: ID!) { product(id: $id) { price } }"}, {"op": "set", "path": "/body/variables", "value": "{\"id\": \"4\"}"}]}
 4. send_request {"id": "graphql/get-product.req.yml"}
 The URL stays {{baseUrl}}/graphql. The value 4 goes in variables, not inline in the query, and $id has the schema's type ID!.
+
+## Running and triaging
+
+To run and fix requests: run_requests → read groups → read one request per group → edit_request each request in the group → run_requests { ids } with the failed ids → end with:
+
+```janus-triage
+{"causes":[{"title":"cause","requestIds":["id"],"fix":"what changed","status":"fixed"}]}
+```
+
+status: "fixed", "needs-you" or "unfixed". Use only ids from the results.

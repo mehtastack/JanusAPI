@@ -33,6 +33,8 @@ export interface EvalTask {
   text: string;
   /** Whether the evaluation presses Send on the focused request in assist mode. */
   sendAfter: boolean;
+  /** Edits applied (and saved) to a request before the turn, e.g. to break it. */
+  setup?: { id: string; ops: unknown[] };
   check(ctx: EvalCtx): Verdict;
 }
 
@@ -167,6 +169,24 @@ function graphqlCreateArticle(title: string): Omit<EvalTask, 'id' | 'text'> {
   };
 }
 
+/** The demo request task 13 breaks: a stale key in the header, so its first run fails with a 401. */
+export const BROKEN_ID = 'auth/api-key-header.req.yml';
+
+/** Task 13: Janus runs the auth folder, fixes the failing request as a draft, then re-runs only it by ids. */
+function runAndTriage(): Omit<EvalTask, 'id' | 'text'> {
+  return {
+    sendAfter: false,
+    setup: { id: BROKEN_ID, ops: [{ op: 'set', path: '/auth/value', value: 'stale-key' }] },
+    check(c) {
+      const steps = c.events.flatMap((e) => (e.type === 'step' ? [{ name: e.name, input: record(e.input) }] : []));
+      const firstRun = steps.findIndex((s) => s.name === 'run_requests');
+      const edited = steps.findIndex((s, i) => i > firstRun && firstRun >= 0 && s.name === 'edit_request' && s.input.id === BROKEN_ID);
+      const rerun = steps.findIndex((s, i) => edited >= 0 && i > edited && s.name === 'run_requests' && Array.isArray(s.input.ids) && s.input.ids.length > 0);
+      return v(firstRun >= 0 && edited >= 0 && rerun >= 0, `run_requests: ${firstRun >= 0}; ${BROKEN_ID} edited after it: ${edited >= 0}; re-run by ids after the edit: ${rerun >= 0}; steps: ${steps.map((s) => s.name).join(', ') || 'none'}`);
+    },
+  };
+}
+
 export const TASKS: EvalTask[] = [
   { id: 1, text: 'get user 7', ...getUser(7) },
   { id: 2, text: 'show me user number 3', ...getUser(3) },
@@ -180,4 +200,5 @@ export const TASKS: EvalTask[] = [
   { id: 10, text: 'what does the create article request send?', ...readOnly((t) => /title/i.test(t), 'mentions title') },
   { id: 11, text: 'get the email of user 7 with GraphQL', ...graphqlUserEmail(7) },
   { id: 12, text: 'create an article titled Hi using GraphQL', ...graphqlCreateArticle('Hi') },
+  { id: 13, text: 'Run the auth folder and fix what fails', ...runAndTriage() },
 ];

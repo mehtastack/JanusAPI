@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { readFileNoFollow, resolveInsideReal, writeFileAtomic, writeFileExclusive, type Masker } from '@apijanus/core';
 import { z } from 'zod';
 import { maskMessages } from './loop';
+import { condenseTriageCard } from './triage';
 import type { Message } from './types';
 
 export interface Conversation { id: string; title: string; createdAt: string; updatedAt: string; messages: Message[] }
@@ -91,6 +92,8 @@ export function compactHistory(messages: Message[], opts: { maxChars?: number; k
   const maxChars = opts.maxChars ?? 60_000;
   const keepRecent = opts.keepRecent ?? 6;
   const out = structuredClone(messages);
+  // The app's triage cards are for the user: the model gets a one-line summary of each, so large cards do not use up its context.
+  for (const m of out) if (m.role === 'assistant' && m.text) m.text = condenseTriageCard(m.text);
   const size = () => JSON.stringify(out).length;
   if (size() <= maxChars) return out;
   const limit = Math.max(0, out.length - keepRecent);

@@ -8,6 +8,8 @@ import { UNTRUSTED_PREFIX, buildSystemPrompt } from '../src/prompts';
 import { FakeHost, req, GQL_SDL } from './helpers';
 import type { Message } from '../src/types';
 import type { Request } from '@apijanus/core';
+import type { RunResultsView } from '../src/host';
+import { cardFromText } from '../src/triage';
 
 function setup(turns: ConstructorParameters<typeof FakeProvider>[0], opts: { askBeforeSend?: boolean; answer?: 'allow-once' | 'allow-conversation' | 'deny'; host?: FakeHost } = {}) {
   const provider = new FakeProvider(turns);
@@ -48,6 +50,15 @@ describe('system prompt', () => {
     expect(s).toContain('keep its base exactly as it is (for example {{baseUrl}})');
     expect(s).toContain('If no request fits, say so. Never change a request\'s method or purpose to make it fit.');
     expect(s).toContain('ask which one they meant');
+  });
+
+  it('has the run-and-triage playbook in both profiles', () => {
+    for (const profile of ['default', 'small'] as const) {
+      const s = buildSystemPrompt({ requestId: null, environmentName: null }, profile);
+      expect(s).toContain('## Running and triaging');
+      expect(s).toContain('run_requests');
+      expect(s).toContain('```janus-triage');
+    }
   });
 });
 
@@ -435,5 +446,144 @@ describe('maskMessages and contentHidden (R16)', () => {
     const { run } = setup([callTool('send_request', {}, 'a'), callTool('get_request', { id: 'missing.req.yml' }, 'b'), say('done')], { answer: 'deny' });
     const r = await run('x');
     expect(r.malformedToolCalls).toBe(0);
+  });
+});
+
+describe('run and triage', () => {
+  const view = (runId: string, outcome: 'failed' | 'passed', status: number): RunResultsView => ({
+    runId, target: 'folder users', passed: outcome === 'passed' ? 1 : 0, failed: outcome === 'failed' ? 1 : 0, errored: 0, skipped: 0, stopped: false,
+    finishedAt: '2026-10-12T10:00:00Z', items: [{ id: 'create.req.yml', name: 'Create', outcome, status, tests: { passed: 0, total: 1 } }],
+  });
+  const runnableHost = (views: RunResultsView[]) => {
+    const host = new FakeHost();
+    host.runPreview = () => ({ label: 'folder users', count: 1, hosts: ['api.local'], janusEdited: 0 });
+    host.runRequests = async () => views.shift()!;
+    return host;
+  };
+
+  it('emits a card from the model block, with before/after, and saves the normalised block', async () => {
+    const host = runnableHost([view('r1', 'failed', 401), view('r2', 'passed', 200)]);
+    const { events, run } = setup([
+      callTool('run_requests', { folderId: 'users' }),
+      callTool('run_requests', { ids: ['create.req.yml'] }),
+      say('Fixed it.\n\n```janus-triage\n{"causes":[{"title":"Wrong auth","requestIds":["create.req.yml"],"fix":"Bearer","status":"fixed"}]}\n```'),
+    ], { host, answer: 'allow-conversation' });
+    const r = await run('run users and fix it');
+    const triage = events.find((e) => e.type === 'triage');
+    expect(triage && triage.type === 'triage' && triage.card).toMatchObject({
+      causes: [{ title: 'Wrong auth', status: 'fixed' }], runIds: ['r1', 'r2'], before: { failed: 1 }, after: { passed: 1 }, fallback: false,
+      changes: [{ id: 'create.req.yml', before: '401', after: '200' }],
+    });
+    expect(events.findIndex((e) => e.type === 'triage')).toBeLessThan(events.findIndex((e) => e.type === 'done'));
+    const last = r.messages.filter((m) => m.role === 'assistant').at(-1)!;
+    expect(last.role === 'assistant' && cardFromText(last.text)?.runIds).toEqual(['r1', 'r2']);
+  });
+
+  it('builds a fallback card when the model ends without a block', async () => {
+    const host = runnableHost([view('r1', 'failed', 500)]);
+    const { events, run } = setup([callTool('run_requests', { folderId: null }), say('It fails with 500.')], { host });
+    await run('run everything');
+    const triage = events.find((e) => e.type === 'triage');
+    expect(triage && triage.type === 'triage' && triage.card.fallback).toBe(true);
+  });
+
+  it('emits no card for a turn that never ran, or whose run was denied', async () => {
+    const host = runnableHost([view('r1', 'failed', 500)]);
+    const denied = setup([callTool('run_requests', { folderId: null }), say('OK, not running.')], { host, answer: 'deny' });
+    await denied.run('run everything');
+    expect(denied.events.some((e) => e.type === 'triage')).toBe(false);
+    const plain = setup([say('Hi')]);
+    await plain.run('hello');
+    expect(plain.events.some((e) => e.type === 'triage')).toBe(false);
+  });
+
+  it('raises the step budget once a turn ran, so the re-run after many reads and edits is not cut off (F1)', async () => {
+    const host = runnableHost([view('r1', 'failed', 401), view('r2', 'passed', 200)]);
+    const reads = Array.from({ length: 18 }, () => callTool('get_request', { id: 'create.req.yml' }));
+    const { events, run } = setup([
+      callTool('run_requests', { folderId: 'users' }),
+      ...reads,
+      callTool('run_requests', { ids: ['create.req.yml'] }),
+      say('Done.'),
+    ], { host, answer: 'allow-once' });
+    const r = await run('run users and fix it');
+    expect(r.reason).toBe('final');
+    const triage = events.find((e) => e.type === 'triage');
+    expect(triage && triage.type === 'triage' && triage.card).toMatchObject({ runIds: ['r1', 'r2'], before: { failed: 1 }, after: { passed: 1 } });
+  });
+
+  it('passes the policy\'s allowed run hosts to run_requests, including hosts approved on the run card (F2)', async () => {
+    const host = new FakeHost({ knownHosts: ['api.local'] });
+    host.runPreview = () => ({ label: 'all', count: 2, hosts: ['api.local', 'new.example'], janusEdited: 0 });
+    let seen: string[] | undefined;
+    host.runRequests = async (_t, opts) => { seen = opts.allowedHosts; return view('r1', 'passed', 200); };
+    const { run } = setup([callTool('run_requests', { folderId: null }), say('ok')], { host, answer: 'allow-once' });
+    await run('run');
+    expect(seen?.sort()).toEqual(['api.local', 'new.example']);
+  });
+
+  it('keeps the default budget for a turn that never ran (F1)', async () => {
+    const reads = Array.from({ length: 16 }, () => callTool('get_request', { id: 'create.req.yml' }));
+    const { run } = setup([...reads, say('stopping')]);
+    const r = await run('read a lot');
+    expect(r.reason).toBe('step-limit');
+  });
+
+  it('compares a later turn\'s re-run with the conversation\'s first run (F1)', async () => {
+    const host = runnableHost([view('r1', 'failed', 401), view('r2', 'passed', 200)]);
+    const { events, run } = setup([
+      callTool('run_requests', { folderId: 'users' }),
+      say('It fails with 401. Shall I fix it?'),
+      callTool('run_requests', { ids: ['create.req.yml'] }),
+      say('Fixed.'),
+    ], { host, answer: 'allow-once' });
+    const runs: RunResultsView[] = [];
+    await run('run users', { runs });
+    await run('continue', { runs });
+    expect(runs.map((x) => x.runId)).toEqual(['r1', 'r2']);
+    const cards = events.flatMap((e) => (e.type === 'triage' ? [e.card] : []));
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toMatchObject({ runIds: ['r1'], before: { failed: 1 } });
+    expect(cards[0]!.after).toBeUndefined();
+    expect(cards[1]).toMatchObject({ runIds: ['r1', 'r2'], before: { failed: 1 }, after: { passed: 1 }, changes: [{ id: 'create.req.yml', before: '401', after: '200' }] });
+  });
+
+  it('still emits the card when the turn ends on an error after a run (F4)', async () => {
+    const host = runnableHost([view('r1', 'failed', 500)]);
+    const { events, run } = setup([callTool('run_requests', { folderId: null }), [{ type: 'text', delta: 'Looking' }, { type: 'error', message: 'overloaded', retryable: true }]], { host });
+    const r = await run('run everything');
+    expect(r.reason).toBe('error');
+    const triage = events.find((e) => e.type === 'triage');
+    expect(triage && triage.type === 'triage' && triage.card).toMatchObject({ runIds: ['r1'], fallback: true });
+    const last = r.messages.filter((m) => m.role === 'assistant').at(-1)!;
+    expect(last.role === 'assistant' && cardFromText(last.text)?.runIds).toEqual(['r1']);
+  });
+
+  it('closes a fence the model left open, so the saved card is found (F4)', async () => {
+    const host = runnableHost([view('r1', 'failed', 500)]);
+    const { run } = setup([callTool('run_requests', { folderId: null }), say('The body was:\n```json\n{"error": "boom"')], { host });
+    const r = await run('run everything');
+    const last = r.messages.filter((m) => m.role === 'assistant').at(-1)!;
+    expect(last.role === 'assistant' && cardFromText(last.text)?.runIds).toEqual(['r1']);
+    expect(last.role === 'assistant' && last.text).toContain('{"error": "boom"\n```\n\n```janus-triage');
+  });
+
+  it('keeps the model\'s text after its triage block in the saved message (F4)', async () => {
+    const host = runnableHost([view('r1', 'failed', 401)]);
+    const { run } = setup([callTool('run_requests', { folderId: null }), say('Found it.\n```janus-triage\n{"causes":[{"title":"Auth","requestIds":["create.req.yml"],"fix":"","status":"needs-you"}]}\n```\nWant me to fix it?')], { host });
+    const r = await run('run');
+    const last = r.messages.filter((m) => m.role === 'assistant').at(-1)!;
+    expect(last.role === 'assistant' && last.text.startsWith('Found it.\n\nWant me to fix it?\n\n```janus-triage\n')).toBe(true);
+  });
+
+  it('a stopped turn emits no card', async () => {
+    const ac = new AbortController();
+    const host = new FakeHost();
+    host.runPreview = () => ({ label: 'all', count: 1, hosts: ['api.local'], janusEdited: 0 });
+    host.runRequests = (_t, _o, signal) => new Promise((_, reject) => { signal.addEventListener('abort', () => reject(new Error('aborted'))); queueMicrotask(() => ac.abort()); });
+    const { events, run } = setup([callTool('run_requests', { folderId: null })], { host, answer: 'allow-once' });
+    const r = await run('run', { signal: ac.signal });
+    expect(r.reason).toBe('stopped');
+    expect(events.some((e) => e.type === 'triage')).toBe(false);
   });
 });

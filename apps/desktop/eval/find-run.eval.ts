@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { runScript } from '@apijanus/core';
 import { ollamaModels, type AgentEvent } from '@apijanus/agent';
 import { AppSession } from '../src/main/session';
+import { RunService } from '../src/main/runner';
 import { SecretStore } from '../src/main/secrets';
 import { JanusService } from '../src/main/janus';
 import { ConversationIndex } from '../src/main/conversation-index';
@@ -41,7 +42,14 @@ async function runOneUnguarded(task: EvalTask, model: string, mode: 'agent' | 'a
     session = new AppSession({
       secrets, runScript: (i) => runScript(i), openBrowser: async () => {}, trash: async () => {}, pickFolder: async () => dir, emit: () => {},
     });
+    // Janus's run_requests needs the runner, as in the app.
+    const runs = new RunService({ session, emit: () => {} });
+    session.setJanusRunner((target, opts, signal) => runs.runForJanus(target, opts, signal));
     const snap = (await session.openAt(dir, true)) as CollectionSnapshot;
+    if (task.setup) {
+      await session.handlers()['request:edit'].run({ id: task.setup.id, ops: task.setup.ops as never[] });
+      await session.handlers()['request:save'].run({ id: task.setup.id });
+    }
     const originalCount = snap.requests.length;
     const originalIds = snap.requests.map((r) => r.id);
     // As a user would: fetch the demo GraphQL schema first, so get_graphql_schema has data. Its call is not part of the task.

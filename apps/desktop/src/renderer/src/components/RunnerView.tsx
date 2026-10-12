@@ -24,6 +24,8 @@ const ResultRow = memo(function ResultRow({ index, id }: { index: number; id: st
   const item = useApp((s) => s.runner.items[index]);
   const running = useApp((s) => s.runner.current === index && s.runner.running);
   const name = useApp((s) => s.snapshot?.requests.find((r) => r.id === id)?.name ?? id);
+  const cause = useApp((s) => s.runner.causes[id]);
+  const change = useApp((s) => s.runner.changes[id]);
   const { showRunResult } = useActions();
   const state = item ? outcomeText(item) : running ? 'running' : 'pending';
   const cls = item ? `outcome-${item.outcome}` : '';
@@ -31,7 +33,16 @@ const ResultRow = memo(function ResultRow({ index, id }: { index: number; id: st
   return (
     <li>
       <div className="row">
-        <button type="button" onClick={() => void showRunResult(index)} disabled={!item}>{item?.name ?? name}</button>
+        {cause || change ? (
+          // Tags sit in the name cell, so they never add a grid column or move the others.
+          <span className="row-name">
+            <button type="button" onClick={() => void showRunResult(index)} disabled={!item}>{item?.name ?? name}</button>
+            {cause && <span className="runner-cause" title={cause}>{cause}</span>}
+            {change && <span className="runner-change">{change}</span>}
+          </span>
+        ) : (
+          <button type="button" onClick={() => void showRunResult(index)} disabled={!item}>{item?.name ?? name}</button>
+        )}
         <span className={cls}>{state}</span>
         <span>{item?.status !== undefined ? item.status : ''}</span>
         <span>{item?.timeMs !== undefined ? `${Math.round(item.timeMs)} ms` : ''}</span>
@@ -177,6 +188,7 @@ export function RunnerView() {
             {folders.map((id) => <option key={id} value={id}>{id}</option>)}
           </select>
         </label>
+        {runner.startedBy === 'janus' && <span className="runner-source">Started by Janus</span>}
         <span>{env ? (env.name ?? env.id) : 'No environment'}</span>
         <NumberSetting
           label="Iterations" value={runner.iterations} min={1} max={10_000} disabled={runner.running}

@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="440" viewBox="0 0 640 440" role="img" aria-labelledby="t d">
+  <title id="t">Janus fixing a failing request</title>
+  <desc id="d">A request fails with 401 Unauthorized. You ask Janus why; it switches the auth from an X-Api-Key header to a Bearer token, asks before sending, you allow it, and the request returns 200 OK.</desc>
+  <style>
+    /* Same palette and story as mehtastack.com/janusapi. The resting state is the finished story, so with no motion it still reads. */
+    .panel { fill: #131513; stroke: #262a27; }
+    .line { stroke: #262a27; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 14px; }
+    .sans { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 15px; }
+    .text { fill: #e8e5df; } .muted { fill: #9aa09c; } .mint { fill: #3df5b0; } .red { fill: #ff8a5c; } .ink { fill: #0a0b0a; }
+    .b { font-weight: 600; }
+    .anim { transform-box: fill-box; transform-origin: center; }
+
+    @keyframes send { 0%, 5%, 7.4%, 56%, 58.4%, 100% { transform: scale(1); } 6.2%, 57.2% { transform: scale(.88); } }
+    @keyframes s401 { 0%, 8% { opacity: 0; } 10.5%, 59% { opacity: 1; } 60.5%, 100% { opacity: 0; } }
+    @keyframes ms { 0%, 8% { opacity: 0; } 10.5%, 93% { opacity: 1; } 96%, 100% { opacity: 0; } }
+    @keyframes shake { 0%, 8%, 11.6%, 100% { transform: translateX(0); } 8.6%, 9.8%, 11% { transform: translateX(6px); } 9.2%, 10.4% { transform: translateX(0); } }
+    @keyframes you { 0%, 16% { opacity: 0; transform: translateY(10px); } 20%, 92% { opacity: 1; transform: translateY(0); } 96%, 100% { opacity: 0; transform: translateY(-6px); } }
+    @keyframes janus { 0%, 25% { opacity: 0; transform: translateY(10px); } 30%, 92.5% { opacity: 1; transform: translateY(0); } 96.5%, 100% { opacity: 0; transform: translateY(-6px); } }
+    @keyframes from { 0%, 33% { opacity: 1; transform: translateX(0); } 36%, 95% { opacity: 0; transform: translateX(-12px); } 98%, 100% { opacity: 1; transform: translateX(0); } }
+    @keyframes to { 0%, 34.5% { opacity: 0; transform: translateX(12px); } 38%, 93% { opacity: 1; transform: translateX(0); } 96%, 100% { opacity: 0; transform: translateX(0); } }
+    @keyframes authglow { 0%, 34.4% { opacity: 0; } 34.5% { opacity: .16; } 48.5%, 100% { opacity: 0; } }
+    @keyframes ask { 0%, 42% { opacity: 0; transform: translateY(10px); } 46%, 93% { opacity: 1; transform: translateY(0); } 97%, 100% { opacity: 0; transform: translateY(-6px); } }
+    @keyframes allow { 0%, 53%, 55.4%, 100% { transform: scale(1); } 54.2% { transform: scale(.9); } }
+    @keyframes s200 { 0%, 60% { opacity: 0; } 62.5%, 93% { opacity: 1; } 96%, 100% { opacity: 0; } }
+    @keyframes okglow { 0%, 59.9% { opacity: 0; } 60% { opacity: .22; } 72%, 100% { opacity: 0; } }
+
+    #send { animation: send 10s linear infinite; }
+    #s401 { opacity: 0; animation: s401 10s linear infinite; }
+    #ms { animation: ms 10s linear infinite; }
+    #status { animation: shake 10s linear infinite; }
+    #you { animation: you 10s ease-out infinite; }
+    #janus { animation: janus 10s ease-out infinite; }
+    #from { opacity: 0; animation: from 10s ease-out infinite; }
+    #to { animation: to 10s ease-out infinite; }
+    #authglow { opacity: 0; animation: authglow 10s ease-out infinite; }
+    #ask { animation: ask 10s ease-out infinite; }
+    #allow { animation: allow 10s linear infinite; }
+    #s200 { animation: s200 10s linear infinite; }
+    #okglow { opacity: 0; animation: okglow 10s ease-out infinite; }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+  </style>
+
+  <rect class="panel" x="0.5" y="0.5" width="639" height="439" rx="14"/>
+
+  <!-- window chrome -->
+  <circle cx="22" cy="19" r="5" fill="#262a27"/><circle cx="38" cy="19" r="5" fill="#262a27"/><circle cx="54" cy="19" r="5" fill="#262a27"/>
+  <text class="sans muted" x="72" y="23" font-size="12">JanusAPI</text>
+  <line class="line" x1="0" y1="38" x2="640" y2="38"/>
+
+  <!-- request line -->
+  <text class="mono mint b" x="20" y="68">GET</text>
+  <text class="mono text" x="64" y="68">{{baseUrl}}/users/42</text>
+  <g id="send" class="anim"><rect x="548" y="50" width="72" height="28" rx="6" fill="#3df5b0"/><text class="sans ink b" x="584" y="69" text-anchor="middle" font-size="14">Send</text></g>
+  <line class="line" x1="0" y1="90" x2="640" y2="90"/>
+
+  <!-- auth row -->
+  <rect id="authglow" x="1" y="91" width="638" height="51" fill="#3df5b0"/>
+  <text class="mono muted" x="20" y="121">Auth</text>
+  <g id="from" class="anim"><text class="mono muted" x="76" y="121" text-decoration="line-through">API key in X-Api-Key</text><line x1="76" y1="116" x2="258" y2="116" stroke="#9aa09c"/></g>
+  <g id="to" class="anim"><text class="mono text" x="76" y="121">Bearer token</text><rect x="190" y="106" width="50" height="20" rx="10" fill="none" stroke="#3df5b0"/><text class="sans mint b" x="215" y="120" text-anchor="middle" font-size="11">Janus</text></g>
+  <line class="line" x1="0" y1="142" x2="640" y2="142"/>
+
+  <!-- status row -->
+  <rect id="okglow" x="1" y="143" width="638" height="51" fill="#3df5b0"/>
+  <g id="status" class="anim">
+    <text id="s401" class="mono red b" x="20" y="173">401 Unauthorized</text>
+    <text id="s200" class="mono mint b" x="20" y="173">200 OK</text>
+    <text id="ms" class="mono muted" x="190" y="173">2 ms</text>
+  </g>
+  <line class="line" x1="0" y1="194" x2="640" y2="194"/>
+
+  <!-- chat -->
+  <g id="you" class="anim"><rect x="438" y="214" width="182" height="36" rx="12" fill="#232724"/><text class="sans text" x="606" y="237" text-anchor="end">Why do I get a 401?</text></g>
+  <g id="janus" class="anim">
+    <text class="sans" x="20" y="282"><tspan class="mint b">Janus</tspan><tspan class="text" dx="8">The API expects a Bearer token, not an X-Api-Key</tspan></text>
+    <text class="sans text" x="20" y="304">header. I switched the auth.</text>
+  </g>
+  <g id="ask" class="anim">
+    <rect x="20.5" y="330.5" width="599" height="54" rx="10" fill="none" stroke="#3df5b0"/>
+    <text class="sans text" x="38" y="363">Send GET to 127.0.0.1?</text>
+    <g id="allow" class="anim"><rect x="438" y="343" width="96" height="28" rx="6" fill="#3df5b0"/><text class="sans ink b" x="486" y="362" text-anchor="middle" font-size="14">Allow once</text></g>
+    <rect x="542.5" y="343.5" width="62" height="27" rx="6" fill="none" stroke="#262a27"/><text class="sans muted" x="573.5" y="362" text-anchor="middle" font-size="14">Deny</text>
+  </g>
+
+  <text class="sans muted" x="20" y="418" font-size="12">The core loop: ask why, review the fix, approve the send.</text>
+</svg>

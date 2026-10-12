@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Masker } from '@apijanus/core';
 import { ConversationStore, compactHistory } from '../src/conversations';
+import { buildTriageCard, triageFence } from '../src/triage';
 import type { Message } from '../src/types';
 import { canSymlink } from '../../core/test/helpers';
 
@@ -71,6 +72,21 @@ describe('compactHistory', () => {
     expect(first.role === 'tool' && first.results[0]).toMatchObject({ callId: 'c0', content: expect.stringMatching(/^\[Earlier get_last_response result omitted: x{100}…\]$/) });
     expect(out.slice(-6)).toEqual(history.slice(-6));
     expect(history[2].role === 'tool' && history[2].results[0].content).toBe(big);
+  });
+
+  it('condenses the app\'s triage card blocks to a one-line summary, keeping the other text (F5)', () => {
+    const items = Array.from({ length: 9 }, (_, n) => ({ id: `r${n}.req.yml`, name: `R${n}`, outcome: 'failed', status: 401, tests: { passed: 0, total: 1 } }));
+    const card = buildTriageCard([{ runId: 'r1', target: 'all', passed: 0, failed: 9, errored: 0, skipped: 0, stopped: false, finishedAt: '2026-10-12T10:00:00Z', items }], undefined);
+    const quoted = '```janus-triage\n{"causes":[]}\n```';
+    const msgs: Message[] = [
+      { role: 'user', content: 'run' },
+      { role: 'assistant', text: `All 9 fail with 401.\n\n${triageFence(card)}`, toolCalls: [] },
+      { role: 'assistant', text: `The model's own block stays:\n${quoted}`, toolCalls: [] },
+    ];
+    const out = compactHistory(msgs);
+    expect(out[1]).toEqual({ role: 'assistant', text: 'All 9 fail with 401.\n\n[triage card: 1 cause, 9 failed]', toolCalls: [] });
+    expect(out[2]).toEqual(msgs[2]);
+    expect(msgs[1].role === 'assistant' && msgs[1].text).toContain('```janus-triage');
   });
 
   it('returns the history unchanged when it already fits', () => {

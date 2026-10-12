@@ -261,6 +261,7 @@ async function start(): Promise<void> {
     const latest = root === null ? undefined : runs.latest(root);
     return latest && toRunResultsView(latest);
   });
+  sess.setJanusRunner((target, opts, signal) => runs.runForJanus(target, opts, signal));
   demo = new DemoService({ dir: join(app.getPath('userData'), 'demo'), secrets, session: appSession });
   const importService = new ImportService({
     session: appSession,

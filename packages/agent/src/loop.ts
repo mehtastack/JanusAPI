@@ -1,10 +1,11 @@
 import { Masker, maskPathSegments, type EditOp } from '@apijanus/core';
-import type { AgentHost, Match } from './host';
+import type { AgentHost, Match, RunResultsView } from './host';
 import type { ApprovalAnswer, ApprovalRequest, PermissionPolicy } from './permissions';
 import { buildSystemPrompt, UNTRUSTED_PREFIX } from './prompts';
 import { createTools, type Tool } from './tools';
 import type { LLMProvider, Message, ToolCall, ToolResult } from './types';
 import type { PromptProfile } from './profile';
+import { buildTriageCard, closeOpenFence, parseTriageBlock, stripTriageBlock, triageFence, type TriageCard } from './triage';
 
 export type DoneReason = 'final' | 'step-limit' | 'stopped' | 'error';
 export type AgentEvent =
@@ -16,6 +17,8 @@ export type AgentEvent =
   /** Assist mode named a request (offered candidate or the open one) as its target: the app should open that request's tab. */
   | { type: 'focus'; requestId: string }
   | { type: 'mode'; mode: 'agent' | 'assist'; reason: 'default' | 'forced' | 'no-tools' | 'fallback' }
+  /** The turn ran requests: the triage card to show (also saved, as a janus-triage block, in the turn's last assistant message). */
+  | { type: 'triage'; card: TriageCard }
   | { type: 'notice'; level: 'info' | 'error'; text: string }
   | { type: 'done'; reason: DoneReason; error?: string; retryable?: boolean };
 
@@ -34,6 +37,11 @@ export interface RunAgentOptions {
   temperature?: number;
   /** Which system prompt to use: 'small' is the compact prompt for small models. */
   promptProfile?: PromptProfile;
+  /**
+   * The conversation's own run memory: every successful run_requests result of the conversation, in order. The loop appends
+   * this turn's runs to it, and a triage card compares the conversation's first run with the latest one.
+   */
+  runs?: RunResultsView[];
 }
 
 /** retryable: true when the run ended on a provider error the provider marked retryable (rate limit, overload, connection). */
@@ -42,6 +50,8 @@ export interface RunAgentResult { messages: Message[]; reason: DoneReason; error
 const STOPPED = 'Stopped by the user.';
 const DENIED = 'The user denied this action.';
 const STEP_LIMIT = 'Step limit reached for this turn.';
+/** A turn that ran requests gets this many steps (reads, one edit per failing request, a re-run); never fewer than the caller's maxSteps. */
+export const RUN_TRIAGE_MAX_STEPS = 40;
 
 /**
  * A find_requests match at or above this score is strong enough that create_request should first suggest editing it. The finder
@@ -89,6 +99,8 @@ function maskApproval(approval: ApprovalRequest, masker: Masker): ApprovalReques
     case 'send': masked = { ...approval, ...(approval.url !== undefined ? { url: t(approval.url) } : {}), ...files(approval.files) }; break;
     case 'new-host': masked = { ...approval, ...files(approval.files) }; break;
     case 'create-request': masked = { ...approval, request: masker.value(approval.request) }; break;
+    // Hosts are never masked here either; the target label may hold a folder name.
+    case 'run': masked = { ...approval, target: masker.text(approval.target), ...(approval.files ? { files: approval.files.map((f) => ({ requestName: masker.text(f.requestName), fileName: masker.text(f.fileName) })) } : {}) }; break;
     case 'set-env-variable':
       masked = { ...approval, name: masker.text(approval.name), newValue: masker.text(approval.newValue), ...(approval.oldValue !== undefined ? { oldValue: t(approval.oldValue) } : {}) };
       break;
@@ -113,7 +125,7 @@ function untilAbort<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
 export async function runAgent(o: RunAgentOptions): Promise<RunAgentResult> {
   const tools = o.tools ?? DEFAULT_TOOLS;
   const defs = o.tools ? o.tools.map((t) => t.def) : DEFAULT_DEFS;
-  const maxSteps = o.maxSteps ?? 15;
+  let maxSteps = o.maxSteps ?? 15;
   let masker = new Masker(o.host.secrets());
   const added: Message[] = [{ role: 'user', content: masker.text(o.userText) }];
   let steps = 0;
@@ -121,8 +133,22 @@ export async function runAgent(o: RunAgentOptions): Promise<RunAgentResult> {
   // The best strong find_requests match of this turn, and whether create_request has already been pointed at it.
   let strong: Match | undefined;
   let createHinted = false;
+  // The results of every run_requests call that ran in this turn, in order.
+  const runs: RunResultsView[] = [];
   const finish = (reason: DoneReason, error?: string, retryable?: boolean): RunAgentResult => {
     const extra = { ...(error ? { error } : {}), ...(retryable ? { retryable: true } : {}) };
+    // A turn that ran requests shows its card even when it then ended on an error (the runs and their results are real).
+    if (runs.length > 0 && (reason === 'final' || reason === 'step-limit' || reason === 'error')) {
+      const lastIndex = added.map((m) => m.role).lastIndexOf('assistant');
+      const last = lastIndex >= 0 ? added[lastIndex] : undefined;
+      const text = last && last.role === 'assistant' ? last.text : '';
+      // Before: the conversation's first run (when the caller keeps run memory), else this turn's first; after: the latest.
+      const first = o.runs?.[0] ?? runs[0]!;
+      const card = buildTriageCard(first === runs[0] ? runs : [first, ...runs], parseTriageBlock(text));
+      o.onEvent({ type: 'triage', card });
+      // A fence the model left open is closed first, so the app's card block is top-level (cardFromText finds it).
+      if (last && last.role === 'assistant') added[lastIndex] = { ...last, text: `${closeOpenFence(stripTriageBlock(text))}\n\n${triageFence(card)}`.trimStart() };
+    }
     o.onEvent({ type: 'done', reason, ...extra });
     return { messages: added, reason, ...extra, malformedToolCalls: malformed };
   };
@@ -218,14 +244,15 @@ export async function runAgent(o: RunAgentOptions): Promise<RunAgentResult> {
             const answer = await untilAbort(Promise.resolve().then(() => o.approve(shown, o.signal)), o.signal);
             if (o.signal.aborted) throw new Stopped();
             o.policy.record(decision.approval, answer);
-            if (answer === 'deny') { result(call, DENIED, true); continue; }
+            if (answer === 'deny') { result(call, t.def.name === 'run_requests' ? 'The user declined the run' : DENIED, true); continue; }
           }
           if (t.def.name === 'set_env_variable') o.policy.noteEnvWrite();
           let value: unknown;
           try {
             // Refresh first: the tool may have just obtained a new secret (e.g. an oauth token during a send).
             const mask = (text: string) => { masker = new Masker(o.host.secrets()); return masker.text(text); };
-            value = await t.run(data, { host: o.host, signal: o.signal, mask });
+            // A run may only reach the hosts the user approved in this conversation (enforced by the app at send time).
+            value = await t.run(data, { host: o.host, signal: o.signal, mask, ...(t.def.name === 'run_requests' ? { allowedHosts: o.policy.allowedRunHosts() } : {}) });
           } catch (e) {
             if (e instanceof Stopped || o.signal.aborted) throw new Stopped();
             masker = new Masker(o.host.secrets());
@@ -243,6 +270,11 @@ export async function runAgent(o: RunAgentOptions): Promise<RunAgentResult> {
             const id = (value as { id: string }).id;
             o.policy.noteEdit(id);
             o.onEvent({ type: 'edit', requestId: id, ops: masker.value((data as { ops: EditOp[] }).ops) as EditOp[] });
+          }
+          if (t.def.name === 'run_requests') {
+            runs.push(value as RunResultsView);
+            o.runs?.push(value as RunResultsView);
+            maxSteps = Math.max(maxSteps, RUN_TRIAGE_MAX_STEPS);
           }
           result(call, UNTRUSTED_PREFIX + masker.text(JSON.stringify(value) ?? 'null'), false);
         }

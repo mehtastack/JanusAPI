@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TASKS, type EvalCtx } from '../eval/tasks';
+import { TASKS, BROKEN_ID, type EvalCtx } from '../eval/tasks';
 import { DEMO_FILES } from '../src/main/demo';
 
 /**
@@ -29,12 +29,13 @@ describe('eval task graders', () => {
     for (const id of ['users/get-user.req.yml', 'articles/create-article.req.yml', 'graphql/get-user.req.yml', 'graphql/create-article.req.yml']) expect(DEMO_IDS).toContain(id);
   });
 
-  it('has the twelve tasks of the spec', () => {
+  it('has the tasks of the spec', () => {
     expect(TASKS.map((t) => t.text)).toEqual([
       'get user 7', 'show me user number 3', 'fetch the user with id 12', 'get the user 99', 'get user 7 and check the email',
       'create an article titled Hello world', 'make a new article called Test', 'add an article named Draft',
       'delete article 5', 'what does the create article request send?',
       'get the email of user 7 with GraphQL', 'create an article titled Hi using GraphQL',
+      'Run the auth folder and fix what fails',
     ]);
   });
 
@@ -149,5 +150,18 @@ describe('eval task graders', () => {
     expect(t.check(base({ calls: [gqlCall('mutation { createArticle(title: "Hi") { title } }', undefined, { createArticle: { title: 'Hi' } })], sentIds })).pass).toBe(true);
     expect(t.check(base({ calls: [gqlCall('mutation { createArticle(title: "Ho") { title } }', undefined, { createArticle: { title: 'Ho' } })], sentIds })).pass).toBe(false);
     expect(t.check(base({ calls: [post('Hi')], sentIds: [POST_ID] })).pass).toBe(false);
+  });
+
+  it('task 13 needs a run, a fix of the broken request, then a re-run by ids', () => {
+    const t = task(13);
+    const step = (name: string, input: unknown, n: number) => ({ type: 'step' as const, callId: `c${n}`, name, input });
+    const run = step('run_requests', { folderId: 'auth' }, 1);
+    const fix = step('edit_request', { id: BROKEN_ID, ops: [] }, 2);
+    const rerun = step('run_requests', { ids: [BROKEN_ID] }, 3);
+    expect(t.check(base({ events: [run, fix, rerun] })).pass).toBe(true);
+    expect(t.check(base({ events: [run, fix] })).pass).toBe(false);
+    expect(t.check(base({ events: [run, rerun] })).pass).toBe(false);
+    expect(t.check(base({ events: [run, step('edit_request', { id: 'auth/no-auth.req.yml', ops: [] }, 2), rerun] })).pass).toBe(false);
+    expect(t.check(base({ events: [run, fix, step('run_requests', { folderId: 'auth' }, 3)] })).pass).toBe(false);
   });
 });

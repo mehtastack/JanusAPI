@@ -14,7 +14,7 @@ const CMD_UNWRITABLE = 'This request has a line break or control character in a 
 import type { SessionNetwork } from './network-settings';
 import { chooseUpload, uploadInfos, uploadLocations, uploadStatuses } from './uploads';
 import { UploadAllowlist } from './upload-allowlist';
-import type { AgentHost, RunResultsView, SendOutcome } from '@apijanus/agent';
+import type { AgentHost, RunResultsView, RunTarget, SendOutcome } from '@apijanus/agent';
 import { lstat, writeFile } from 'node:fs/promises';
 import { responseFileName } from './response-file';
 import type { Handler } from './router';
@@ -122,6 +122,7 @@ export class AppSession {
   // protects nothing, and letting them into secrets() would let Janus choose what approval cards hide.
   private janusWritten = new WeakMap<Workspace, Map<string, Set<string>>>();
   private runResults?: () => RunResultsView | undefined;
+  private janusRunner?: (target: RunTarget, opts: { stopOnFailure: boolean; allowedHosts?: string[] }, signal: AbortSignal) => Promise<RunResultsView>;
   private closeListeners = new Set<() => void>();
   private graphql?: GraphqlBridge;
   // Request history of each opened collection, and the recordings still being written (see historyIdle).
@@ -710,7 +711,7 @@ export class AppSession {
    * must call finish() with the result, which releases the slot, keeps the runtime variables and the last response, and
    * returns the masker for that run; callers must mask everything they pass on.
    */
-  prepareRun(id: string, runtimeVars: Record<string, string>, signal?: AbortSignal, opts: { variant?: (r: Request) => Request; detached?: boolean; source?: HistorySource; iteration?: ScriptIteration } = {}): PreparedRun {
+  prepareRun(id: string, runtimeVars: Record<string, string>, signal?: AbortSignal, opts: { variant?: (r: Request) => Request; detached?: boolean; source?: HistorySource; iteration?: ScriptIteration; allowedHosts?: readonly string[] } = {}): PreparedRun {
     const ws = this.need();
     const draft = ws.getRequest(id);
     if (!draft) throw new Error(`Request ${id} is not loaded`);
@@ -727,7 +728,7 @@ export class AppSession {
     if (this.untrusted(ws, id) && (request.script?.trim() || request.tests?.trim())) this.janusRuntime.add(ws);
 
     const prevRuntime = runtimeVars;
-    const checkHosts = opts.detached ? undefined : this.hostCheck(ws, id, request, chain.map((f) => f.config), prevRuntime, opts.source ?? 'user', dataVars);
+    const checkHosts = opts.detached ? undefined : this.hostCheck(ws, id, request, chain.map((f) => f.config), prevRuntime, opts.source ?? 'user', dataVars, opts.allowedHosts);
     const oauthTokens: string[] = [];
     // Credentials the send made up itself (a signed JWT, a Digest response, an AWS signature): secrets of this run, masked in
     // the view, in history and in what Janus gets.
@@ -866,18 +867,24 @@ export class AppSession {
    * configured variables name, the hosts the request resolved to before its scripts (what Janus's policy or the user saw),
    * and, for a Janus send, the hosts its policy asked about after an earlier refusal (once). A refused host is remembered so
    * the policy asks about it by name. Other sends are not checked.
+   *
+   * runHosts: a send of a run Janus started, every one of which is checked (whoever wrote the request): allowed are exactly
+   * these hosts, the ones its conversation approved (known hosts and hosts approved on run and new-host cards). The hosts the
+   * request resolved to before its scripts are not added: an earlier send of the same run may have changed them.
    */
-  private hostCheck(ws: Workspace, id: string, request: Request, folders: FolderConfig[], runtime: Record<string, string>, source: HistorySource, dataVars: Record<string, string> = {}): RunContext['checkHosts'] {
-    if (source !== 'janus' && !this.untrusted(ws, id)) return undefined;
-    const allowed = new Set(this.agentHost(null).knownHosts());
-    const { envVars, collectionVars } = this.scopeVars(ws);
-    const vars = mergeVariables(collectionVars, envVars, dataVars, runtime);
-    const before = [request.url, ...oauthUrls(effectiveAuth(request.auth, folders, ws.collection.config))];
-    for (const u of before) { const h = hostOf(u, vars); if (h) allowed.add(h); }
+  private hostCheck(ws: Workspace, id: string, request: Request, folders: FolderConfig[], runtime: Record<string, string>, source: HistorySource, dataVars: Record<string, string> = {}, runHosts?: readonly string[]): RunContext['checkHosts'] {
+    if (runHosts === undefined && source !== 'janus' && !this.untrusted(ws, id)) return undefined;
+    const allowed = new Set(runHosts ?? this.agentHost(null).knownHosts());
     let byId = this.refusedHosts.get(ws);
     if (!byId) this.refusedHosts.set(ws, (byId = new Map()));
     const refused = byId;
-    if (source === 'janus') {
+    if (runHosts === undefined) {
+      const { envVars, collectionVars } = this.scopeVars(ws);
+      const vars = mergeVariables(collectionVars, envVars, dataVars, runtime);
+      const before = [request.url, ...oauthUrls(effectiveAuth(request.auth, folders, ws.collection.config))];
+      for (const u of before) { const h = hostOf(u, vars); if (h) allowed.add(h); }
+    }
+    if (source === 'janus' && runHosts === undefined) {
       // Janus's policy asked about these (or knows them) before this send: they are allowed this once.
       for (const h of refused.get(id) ?? []) allowed.add(h);
       refused.delete(id);
@@ -1299,6 +1306,11 @@ export class AppSession {
     this.runResults = fn;
   }
 
+  /** Where Janus starts runs; set once at startup. */
+  setJanusRunner(fn: NonNullable<AppSession['janusRunner']>): void {
+    this.janusRunner = fn;
+  }
+
   /** Ranks the open collection's requests against a description, reading drafts (unsaved edits) through getRequest. */
   findRequests(query: string, limit = 10): Match[] {
     const ws = this.ws;
@@ -1474,6 +1486,31 @@ export class AppSession {
         }
         return out;
       },
+    };
+    host.runPreview = (target) => {
+      live();
+      let ids: string[];
+      let label: string;
+      if ('ids' in target) {
+        ids = [...new Set(target.ids)];
+        if (ids.length === 0) throw new Error('There are no requests to run');
+        for (const id of ids) if (!known(id)) throw new Error(`Unknown request: ${id}`);
+        label = `${ids.length} ${ids.length === 1 ? 'request' : 'requests'}`;
+      } else {
+        const plan = this.runPlan(target.folderId);
+        ids = plan.ids;
+        if (ids.length === 0) throw new Error('There are no requests to run');
+        label = target.folderId ? `folder ${plan.label}` : 'whole collection';
+      }
+      const hosts = ids.flatMap((id) => [host.targetHost(id), ...host.authHosts(id)]);
+      // The files the run would upload, as files(id) lists them for a single send: names only, never paths or contents.
+      const files = ids.flatMap((id) => host.files!(id).map((f) => ({ requestName: ws.getRequest(id)?.name ?? id, fileName: f.fileName })));
+      return { label, count: ids.length, hosts, janusEdited: ids.filter((id) => this.janusTouched(ws, id)).length, files };
+    };
+    host.runRequests = (target, opts, signal) => {
+      live();
+      if (!this.janusRunner) return Promise.reject(new Error('This app cannot run requests for Janus'));
+      return this.janusRunner(target, opts, signal);
     };
     return host;
   }

@@ -1,15 +1,18 @@
 import { z } from 'zod';
 import { applyOps, EditOpSchema, HISTORY_STATUS_CLASSES, Masker, parsePointer, requestFiles, RequestSchema, type EditOp, type FileInfo, type HistoryBody, type Request } from '@apijanus/core';
-import type { AgentHost, SendOutcome } from './host';
+import type { AgentHost, RunResultsView, SendOutcome } from './host';
 import { selectPath } from './jsonpath';
+import { groupFailures } from './triage';
 import type { ToolDef } from './types';
 
-export type Permission = 'auto' | 'send' | 'approval';
+export type Permission = 'auto' | 'send' | 'approval' | 'run';
 export interface ToolContext {
   host: AgentHost;
   signal: AbortSignal;
   /** Masks configured secrets. Tools call it on any text BEFORE cutting it, so a secret straddling the cut cannot leak a prefix. */
   mask(text: string): string;
+  /** The hosts a run_requests run may send to (the policy's allowedRunHosts()); the app enforces them at send time. */
+  allowedHosts?: string[];
 }
 export interface Tool {
   def: ToolDef;
@@ -219,6 +222,25 @@ const historyBody = (b: HistoryBody | undefined, mask: (s: string) => string) =>
 };
 const NewRequest = RequestSchema.omit({ apijanus: true });
 
+/** A run's results for the model: groups first, then items with failures first, cut to 8 KB. */
+export function shapeRunResults(view: RunResultsView) {
+  // Each group lists at most 20 ids so the groups themselves stay small.
+  const groups = groupFailures(view.items).map((g) => (g.ids.length > 20 ? { ...g, ids: g.ids.slice(0, 20), moreIds: g.ids.length - 20 } : g));
+  const rank = (o: string) => (o === 'failed' || o === 'error' ? 0 : o === 'skipped' ? 1 : 2);
+  const sorted = view.items.map((item, n) => ({ item, n })).sort((a, b) => rank(a.item.outcome) - rank(b.item.outcome) || a.n - b.n).map((x) => x.item);
+  const build = (keep: number) => ({ ...view, groups, items: sorted.slice(0, keep), ...(keep < sorted.length ? { cut: `${sorted.length - keep} more requests not shown` } : {}) });
+  const fits = (keep: number) => JSON.stringify(build(keep)).length <= BODY_LIMIT;
+  if (fits(sorted.length)) return build(sorted.length);
+  let lo = 0;
+  let hi = sorted.length;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >>> 1;
+    if (fits(mid)) lo = mid;
+    else hi = mid;
+  }
+  return build(lo);
+}
+
 export function createTools(): Tool[] {
   return [
     tool('list_requests', 'List every request in the collection with its id, folder, name, method and URL.', 'auto', z.object({}).strict(),
@@ -295,24 +317,21 @@ export function createTools(): Tool[] {
         await host.setEnvVariable(i.name, i.value, secret);
         return { name: i.name, secret };
       }),
-    tool('get_run_results', "Read the latest collection run: counts and per-request outcomes (failures first), with each send's iteration number and data row label in a data-driven run. Never includes response bodies.", 'auto', z.object({}).strict(),
+    tool('get_run_results', "Read the latest collection run: counts, failures grouped by cause (groups) and per-request outcomes (failures first), with each send's iteration number and data row label in a data-driven run. Never includes response bodies.", 'auto', z.object({}).strict(),
       async (_i, { host }) => {
         const view = host.lastRun?.();
         if (!view) throw new Error('No run in this session yet.');
-        const rank = (o: string) => (o === 'failed' || o === 'error' ? 0 : o === 'skipped' ? 1 : 2);
-        const sorted = view.items.map((item, n) => ({ item, n })).sort((a, b) => rank(a.item.outcome) - rank(b.item.outcome) || a.n - b.n).map((x) => x.item);
-        const build = (keep: number) => ({ ...view, items: sorted.slice(0, keep), ...(keep < sorted.length ? { cut: `${sorted.length - keep} more requests not shown` } : {}) });
-        // The most items that fit, found by binary search (a data-driven run can have 10,000s of items).
-        const fits = (keep: number) => JSON.stringify(build(keep)).length <= BODY_LIMIT;
-        if (fits(sorted.length)) return build(sorted.length);
-        let lo = 0;
-        let hi = sorted.length;
-        while (hi - lo > 1) {
-          const mid = (lo + hi) >>> 1;
-          if (fits(mid)) lo = mid;
-          else hi = mid;
-        }
-        return build(lo);
+        return shapeRunResults(view);
+      }),
+    tool('run_requests', 'Run requests on the app\'s runner, with their unsaved drafts, and get the results: counts, failures grouped by cause (groups) and per-request outcomes. Pass folderId (a folder id from list_requests, or null for the whole collection) to run a folder, or ids to re-run specific requests (for example the failed ones after fixing them). The user approves each run.', 'run',
+      // One object, not a union: Anthropic requires a tool's input schema to be a JSON object at the top level.
+      z.object({ folderId: z.string().max(1024).nullable().optional(), ids: z.array(id).min(1).max(200).optional(), stopOnFailure: z.boolean().optional() }).strict()
+        .refine((x) => (x.folderId !== undefined) !== (x.ids !== undefined), 'Pass exactly one of folderId and ids'),
+      async (i: { folderId?: string | null; ids?: string[]; stopOnFailure?: boolean }, { host, signal, allowedHosts }) => {
+        if (!host.runRequests || !host.runPreview) throw new Error('This app cannot run requests for Janus');
+        const target = i.ids ? { ids: [...new Set(i.ids)] } : { folderId: i.folderId ?? null };
+        host.runPreview(target); // the policy allows a target whose preview throws, so the same error must stop the run here
+        return shapeRunResults(await host.runRequests(target, { stopOnFailure: i.stopOnFailure ?? false, ...(allowedHosts ? { allowedHosts } : {}) }, signal));
       }),
     tool('get_graphql_schema', 'Read the GraphQL schema cached for a GraphQL request (defaults to the open request). Without type: the root Query and Mutation fields with their arguments and return types, then the other type names. With type: that type\'s fields and arguments, input fields or enum values. Read it before writing or changing a query; never invent fields.', 'auto',
       z.object({ id: id.optional(), type: z.string().min(1).max(200).optional() }).strict(),

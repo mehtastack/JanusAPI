@@ -238,7 +238,7 @@ export interface RunnerSummaryView {
 }
 export type RunnerEvent =
   /** rowLabels: each data row's label (masked), when the run has data: iteration i uses rowLabels[(i - 1) % length]. */
-  | { type: 'start'; target: RunnerTarget; ids: string[]; iterations: number; rowLabels?: string[] }
+  | { type: 'start'; target: RunnerTarget; ids: string[]; iterations: number; rowLabels?: string[]; source?: 'user' | 'janus' }
   | { type: 'item-start'; index: number; id: string; iteration: number }
   | { type: 'item-done'; item: RunnerItemView }
   | { type: 'done'; summary: RunnerSummaryView };

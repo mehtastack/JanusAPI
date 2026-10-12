@@ -1,7 +1,9 @@
 import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useActions, useApp, useRemembered } from '../App';
 import type { DockItem } from '../store';
+import { stripShownTriageBlock } from '@apijanus/agent/src/triage';
 import { ApprovalCard } from './ApprovalCard';
+import { TriageCard } from './TriageCard';
 import { Splitter, type SplitSize } from './Splitter';
 import { BrandMark } from './BrandMark';
 import { shortcutLabel } from '../shortcut';
@@ -56,6 +58,8 @@ export function JanusPanel({ size, narrow }: { size: SplitSize; narrow: boolean 
   const janus = useApp((s) => s.janus);
   const ai = useApp((s) => s.ai);
   const runs = useApp((s) => s.runs);
+  const runner = useApp((s) => s.runner);
+  const snapshot = useApp((s) => s.snapshot);
   const tabs = useApp((s) => s.tabs);
   const a = useActions();
   const platform = useApp((s) => s.platform);
@@ -96,6 +100,11 @@ export function JanusPanel({ size, narrow }: { size: SplitSize; narrow: boolean 
       send();
     }
   };
+
+  const names: Record<string, string> = {};
+  for (const r of snapshot?.requests ?? []) if (r.name) names[r.id] = r.name;
+  const lastStep = [...items].reverse().find((it) => it.kind === 'step');
+  const runningRequests = running && runner.running && runner.startedBy === 'janus' && lastStep?.kind === 'step' && lastStep.name === 'run_requests' && lastStep.ok === undefined;
 
   // The most recent edit item per request: only that one can be undone from here.
   const latestEdit: Record<string, DockItem> = {};
@@ -153,11 +162,15 @@ export function JanusPanel({ size, narrow }: { size: SplitSize; narrow: boolean 
               switch (b.kind) {
                 case 'user': return <article key={i} className="user">{b.text}</article>;
                 case 'assistant': {
-                  const rid = b.assist?.requestId ?? null;
                   const streaming = running && i === blocks.length - 1;
+                  // The app's triage card block and a half-streamed one never show (the card renders from its own item); a
+                  // closed block the app cannot read (e.g. triage of a run the user started) stays visible once the turn ends.
+                  const text = stripShownTriageBlock(b.text, { streaming });
+                  if (text.trim() === '') return <Fragment key={i} />;
+                  const rid = b.assist?.requestId ?? null;
                   return (
                     <article key={i} className={streaming ? 'assistant streaming' : 'assistant'}>
-                      {b.text}
+                      {text}
                       {rid && (
                         <div>
                           <button type="button" className="assist-send" disabled={runs[rid]?.status === 'running'} onClick={() => void sendAssisted(rid)}>Send {rid}</button>
@@ -170,6 +183,8 @@ export function JanusPanel({ size, narrow }: { size: SplitSize; narrow: boolean 
                   return (
                     <ApprovalCard key={`${b.turnId}-${b.approvalId}`} approval={b.approval} answer={b.answer} onAnswer={(ans) => void a.janusApprove(b.approvalId, ans)} />
                   );
+                case 'triage':
+                  return <TriageCard key={i} card={b.card} names={names} onOpen={(id) => { a.setSection('collections'); void a.openTab(id); }} />;
                 case 'edit': return <EditItem key={i} requestId={b.requestId} latest={latestEdit[b.requestId] === b} />;
                 case 'error':
                   return (
@@ -185,6 +200,12 @@ export function JanusPanel({ size, narrow }: { size: SplitSize; narrow: boolean 
                 default: return <Fragment key={i} />;
               }
             })}
+            {runningRequests && (
+              <p role="status" className="janus-run-progress">
+                {`Running ${runner.runLabel ?? 'requests'} · ${Object.keys(runner.items).length}/${runner.ids.length}`}
+                {' '}<button type="button" className="link" onClick={() => a.setSection('runner')}>Open in Runner</button>
+              </p>
+            )}
             {thinking && <Thinking />}
           </div>
           {unconfigured && (
