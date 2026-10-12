@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, Platform, Arch } from 'electron-builder';
 import {
-  buildMode, buildConfig, winSigning, targetsFor, platformFromArgs, UNSIGNED_NOTICE, UNSIGNED_WIN_NOTICE,
+  buildMode, buildConfig, winSigning, dropEmptySigningEnv, targetsFor, platformFromArgs, UNSIGNED_NOTICE, UNSIGNED_WIN_NOTICE,
 } from './build-mode.mjs';
 
 // The desktop app's folder: the script works from any current directory.
@@ -22,6 +22,8 @@ if (platform === 'darwin' && process.platform === 'darwin') {
     identities = execFileSync('security', ['find-identity', '-v', '-p', 'codesigning'], { encoding: 'utf8' }).split('\n');
   } catch { /* no keychain access: treated as no identity */ }
 }
+// Missing CI secrets arrive as empty strings; electron-builder would read an empty CSC_LINK as a path.
+dropEmptySigningEnv(process.env);
 const mode = buildMode(platform, process.env, identities);
 for (const w of mode.warnings) console.warn(`warning: ${w}`);
 if (mode.error) { console.error(`error: ${mode.error}`); process.exit(1); }

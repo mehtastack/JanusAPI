@@ -2,6 +2,17 @@ export const UNSIGNED_NOTICE = 'UNSIGNED build — macOS will warn on first open
 export const UNSIGNED_WIN_NOTICE = 'UNSIGNED Windows build — SmartScreen will warn on first run';
 const API_VARS = ['APPLE_API_KEY', 'APPLE_API_KEY_ID', 'APPLE_API_ISSUER'];
 const ID_VARS = ['APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'];
+const SIGNING_VARS = ['CSC_LINK', 'CSC_KEY_PASSWORD', 'WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD', ...API_VARS, ...ID_VARS];
+
+/**
+ * Deletes signing variables set to an empty string, as CI passes a secret that does not exist. electron-builder reads
+ * them itself, and an empty CSC_LINK resolves to the working directory ("… not a file"). Returns the names removed.
+ */
+export function dropEmptySigningEnv(env) {
+  const removed = SIGNING_VARS.filter((n) => env[n] === '');
+  for (const n of removed) delete env[n];
+  return removed;
+}
 const has = (env, names) => names.every((n) => typeof env[n] === 'string' && env[n].length > 0);
 const any = (env, names) => names.some((n) => typeof env[n] === 'string' && env[n].length > 0);
 

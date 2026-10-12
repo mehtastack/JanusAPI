@@ -8,7 +8,15 @@ Build, send and test HTTP and GraphQL requests. Ask Janus why a request fails an
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-3DF5B0)](LICENSE) [![CI](https://github.com/mehtastack/JanusAPI/actions/workflows/ci.yml/badge.svg)](https://github.com/mehtastack/JanusAPI/actions/workflows/ci.yml) [![Downloads](https://img.shields.io/github/downloads/mehtastack/JanusAPI/total?color=3DF5B0)](https://github.com/mehtastack/JanusAPI/releases) ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-555) ![No account](https://img.shields.io/badge/account-not%20needed-555)
 
-[Website](https://mehtastack.com/janusapi) · [Download](https://github.com/mehtastack/JanusAPI/releases) · [Why JanusAPI](#janusapi-vs-postman-vs-bruno)
+<p>
+<a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-arm64.dmg"><img src="assets/download/macos.svg" alt="Download for macOS" height="48"></a>
+<a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-Setup-x64.exe"><img src="assets/download/windows.svg" alt="Download for Windows" height="48"></a>
+<a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-x86_64.AppImage"><img src="assets/download/linux.svg" alt="Download for Linux" height="48"></a>
+</p>
+
+<sub>macOS button: Apple silicon · also for <a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-x64.dmg">Intel Macs</a> · Linux as <a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/janusapi_amd64.deb">.deb</a> · <a href="https://github.com/mehtastack/JanusAPI/releases">all releases</a></sub>
+
+[Website](https://mehtastack.com/janusapi) · [All releases](https://github.com/mehtastack/JanusAPI/releases) · [Why JanusAPI](#janusapi-vs-postman-vs-bruno)
 
 <img src="assets/janus-demo.svg" alt="Animated: a request fails with 401, Janus switches the auth to a Bearer token, asks before sending, and the request returns 200 OK" width="640">
 
@@ -164,9 +172,19 @@ Postman and Bruno are both good tools. Here is where JanusAPI differs, including
 
 ## Install
 
-JanusAPI runs on **macOS** (Apple silicon and Intel), **Windows** (x64) and **Linux** (x64, AppImage and `.deb`). Releases will be published on the [Releases](https://github.com/mehtastack/JanusAPI/releases) page.
+JanusAPI runs on **macOS** (Apple silicon and Intel), **Windows** (x64) and **Linux** (x64). Download the latest version:
 
-Until then, build it from source (Node.js 22 or later):
+| Platform | Download |
+|---|---|
+| macOS, Apple silicon | [JanusAPI-arm64.dmg](https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-arm64.dmg) |
+| macOS, Intel | [JanusAPI-x64.dmg](https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-x64.dmg) |
+| Windows, x64 | [JanusAPI-Setup-x64.exe](https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-Setup-x64.exe) |
+| Linux, x64 | [JanusAPI-x86_64.AppImage](https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-x86_64.AppImage) (`chmod +x` it, then run it) |
+| Debian and Ubuntu, x64 | [janusapi_amd64.deb](https://github.com/mehtastack/JanusAPI/releases/latest/download/janusapi_amd64.deb) (`sudo apt install ./janusapi_amd64.deb`) |
+
+Every release is on the [Releases](https://github.com/mehtastack/JanusAPI/releases) page. The app checks for new releases and shows them in **Settings → About**; signed macOS, Windows and AppImage builds update themselves.
+
+Or build it from source (Node.js 22 or later):
 
 ```sh
 git clone https://github.com/mehtastack/JanusAPI.git

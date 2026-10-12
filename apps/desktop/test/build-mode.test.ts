@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error plain ESM script without types
-import { buildMode, macSigning, winSigning, targetsFor, platformFromArgs, buildConfig, UNSIGNED_NOTICE, UNSIGNED_WIN_NOTICE } from '../scripts/build-mode.mjs';
+import { buildMode, macSigning, winSigning, dropEmptySigningEnv, targetsFor, platformFromArgs, buildConfig, UNSIGNED_NOTICE, UNSIGNED_WIN_NOTICE } from '../scripts/build-mode.mjs';
 
 const ID = ['  1) ABCDEF0123 "Developer ID Application: Pat M (TEAM123456)"', '     1 valid identities found'];
 const API = { APPLE_API_KEY: '/k.p8', APPLE_API_KEY_ID: 'K1', APPLE_API_ISSUER: 'I1' };
@@ -102,5 +102,13 @@ describe('buildConfig', () => {
   it('windows build has neither mac nor linux overrides', () => {
     const c = buildConfig({ platform: 'win32', mode: { kind: 'signed', notarize: null, warnings: [] } });
     expect(c).toEqual({ extraMetadata: { janusBuild: 'signed' } });
+  });
+});
+
+describe('dropEmptySigningEnv', () => {
+  it('removes signing variables set to an empty string (missing CI secrets), keeps the rest', () => {
+    const env: Record<string, string | undefined> = { CSC_LINK: '', CSC_KEY_PASSWORD: '', APPLE_API_KEY_ID: '', WIN_CSC_LINK: 'cert', PATH: '', GH_TOKEN: 't' };
+    expect(dropEmptySigningEnv(env).sort()).toEqual(['APPLE_API_KEY_ID', 'CSC_KEY_PASSWORD', 'CSC_LINK']);
+    expect(env).toEqual({ WIN_CSC_LINK: 'cert', PATH: '', GH_TOKEN: 't' });
   });
 });
