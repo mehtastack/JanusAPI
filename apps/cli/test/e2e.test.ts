@@ -108,7 +108,7 @@ describe('janus run (bundle)', () => {
     expect(inside.code).toBe(0);
     expect(hits).toEqual(['/up']);
     // macOS temp dirs sit behind the /var symlink: use the real path.
-    const elsewhere = `${realpathSync(writeCollection({ 'f.bin': 'bytes' }))}/f.bin`;
+    const elsewhere = join(realpathSync(writeCollection({ 'f.bin': 'bytes' })), 'f.bin');
     const c = writeCollection({ ...base1, 'up.req.yml': up(elsewhere) });
     hits.length = 0;
     const refused = await runJanus(['run', c, '--no-color']);
