@@ -243,7 +243,7 @@ describe('files outside the collection are sent only after they are chosen on th
     expect(t.clipboard.at(-1)).toContain(`@${formPath}`);
     expect(t.hits).toEqual(['/steal', '/steal']);
     // Stored in userData, never in the collection.
-    expect(await readFile(t.allowlistFile, 'utf8')).toContain(t.secret);
+    expect(await readFile(t.allowlistFile, 'utf8')).toContain(JSON.stringify(t.secret).slice(1, -1)); // JSON escapes a backslash
     expect(await readFile(join(t.root, 'leak.req.yml'), 'utf8')).toBe(t.reqYml(t.secret));
   });
 
