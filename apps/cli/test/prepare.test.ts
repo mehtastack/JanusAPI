@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { runCollection, sendVariables, type RunSummary, type RunCollectionEvent } from '@apijanus/core';
@@ -85,7 +86,8 @@ describe('createSession', () => {
     const refused = (await runAll(dir)).done[0]!;
     expect(refused.outcome).toBe('error');
     // In the command line's words, not the app's "choose it again".
-    expect(refused.result?.error).toBe(uploadRefusedError(`${outside}/f.txt`, 'outside'));
+    // The path as this system spells it (backslashes on Windows).
+    expect(refused.result?.error).toBe(uploadRefusedError(join(outside, 'f.txt'), 'outside'));
     expect(refused.result?.error).toContain('pass --allow-outside-files to send it');
     expect((await runAll(dir, ['--allow-outside-files'])).done[0]!.outcome).toBe('passed');
   });

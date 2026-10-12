@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-export const BUNDLE = new URL('../dist/janus.mjs', import.meta.url).pathname;
+export const BUNDLE = fileURLToPath(new URL('../dist/janus.mjs', import.meta.url));
 
 const live = new Set<ChildProcess>();
 /** Kills any child still running (call from afterAll so a failed test leaves nothing behind). */

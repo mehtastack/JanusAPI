@@ -85,7 +85,8 @@ describe('janus run (bundle)', () => {
       expect(r.stdout, args.join(' ')).toBe('');
     }
   });
-  it('Ctrl-C mid-request → exit 130, partial junit written', async () => {
+  // Windows has no SIGINT to send: child.kill('SIGINT') terminates the process outright, so Ctrl-C cannot be simulated there.
+  it.skipIf(process.platform === 'win32')('Ctrl-C mid-request → exit 130, partial junit written', async () => {
     const o = out();
     const c = coll({ 'z-slow.req.yml': reqYml('Slow', '{{base}}/slow', 'seq: 9\n') });
     let sent = false;
