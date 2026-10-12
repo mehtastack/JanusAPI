@@ -27,4 +27,5 @@ jobs:
           node-version: 22
       - run: npx -y pnpm@10 install --frozen-lockfile
       - run: npx -y pnpm@10 -r typecheck
-      - run: npx -y pnpm@10 -r test
+      # --no-bail: every package's tests run, so one run reports every failure.
+      - run: npx -y pnpm@10 -r --no-bail test
