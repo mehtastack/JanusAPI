@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+.superpowers/
+*.tmp
+.DS_Store
+test-results/
+playwright-report/
+apps/desktop/eval/results/
+apps/desktop/release/
+docs/

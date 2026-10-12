@@ -1,0 +1,10 @@
+JanusAPI Demo · env Staging · 1 iteration
+
+PASS  GET    users/List <users> & "friends"  200  12 ms  tests 1/1
+FAIL  POST   users/Create  201  30 ms  tests 0/1
+     ✗ has id: expected undefined to exist
+ERR   GET    auth/basic/Me  —
+     secret variable `token` has no value — pass --var token=… or set JANUS_VAR_token
+SKIP  GET    Later  —
+
+1 passed, 1 failed, 1 errored, 1 skipped in 1.2 s

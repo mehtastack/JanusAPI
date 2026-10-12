@@ -1,0 +1,182 @@
+# Tag-triggered release: pushing a tag vX.Y.Z (matching apps/desktop/package.json) builds JanusAPI for macOS, Windows
+# and Linux and uploads all of it to one DRAFT GitHub release (created first by the `draft` job, so the build jobs never
+# race to create duplicates), which a maintainer checks and publishes by hand. Signing happens only when the secrets below exist; without them the builds are unsigned (see docs/releasing.md).
+#
+# Run by hand (workflow_dispatch), only the Linux job runs: it builds the AppImage and .deb WITHOUT publishing and runs
+# the AppImage smoke check. Nothing is uploaded except on a tag push.
+#
+# Each job's signing secrets are exposed only to the step that needs them, never to install scripts or tests.
+name: release
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  # Creates the one draft release the three build jobs upload into, so they cannot race to create duplicates
+  # (electron-builder reuses an existing draft for the tag). Also the single tag == app version check.
+  draft:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Tag matches the app version
+        shell: bash
+        run: |
+          v=$(node -p "require('./apps/desktop/package.json').version")
+          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} does not match app version v$v"; exit 1; }
+      - name: Create the draft release (unless it exists)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.JANUS_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          OWNER: ${{ vars.JANUS_RELEASE_OWNER || github.repository_owner }}
+          REPO: ${{ vars.JANUS_RELEASE_REPO || github.event.repository.name }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" -R "$OWNER/$REPO" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" -R "$OWNER/$REPO" --draft --title "$GITHUB_REF_NAME" --notes ""
+
+  mac:
+    needs: draft
+    if: ${{ github.event_name == 'push' }}
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      # Only whether the key exists is job-wide (secrets are not readable from a step-level `if`); the key itself is
+      # exposed to the one step that writes it, never to install scripts or tests.
+      HAS_P8: ${{ secrets.APPLE_API_KEY_P8 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx -y pnpm@10 install --frozen-lockfile
+      - run: npx -y pnpm@10 -r typecheck
+      - run: npx -y pnpm@10 -r test
+      - name: App Store Connect API key
+        if: ${{ env.HAS_P8 == 'true' }}
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          umask 077
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/apple-api-key.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/apple-api-key.p8" >> "$GITHUB_ENV"
+      - name: Build and publish to the draft release
+        working-directory: apps/desktop
+        env:
+          # Releases go to this repository unless the JANUS_RELEASE_OWNER / JANUS_RELEASE_REPO repository variables
+          # name a separate (public, releases-only) repository; JANUS_RELEASE_TOKEN must then be able to write there.
+          GH_TOKEN: ${{ secrets.JANUS_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          JANUS_RELEASE_OWNER: ${{ vars.JANUS_RELEASE_OWNER || github.repository_owner }}
+          JANUS_RELEASE_REPO: ${{ vars.JANUS_RELEASE_REPO || github.event.repository.name }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: node scripts/dist.mjs --mac --publish
+      - name: Remove the API key file
+        if: ${{ always() }}
+        run: rm -f "$RUNNER_TEMP/apple-api-key.p8"
+
+  windows:
+    needs: draft
+    if: ${{ github.event_name == 'push' }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx -y pnpm@10 install --frozen-lockfile
+      - run: npx -y pnpm@10 -r typecheck
+      - run: npx -y pnpm@10 -r test
+      - name: Build and publish to the draft release
+        working-directory: apps/desktop
+        env:
+          GH_TOKEN: ${{ secrets.JANUS_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          JANUS_RELEASE_OWNER: ${{ vars.JANUS_RELEASE_OWNER || github.repository_owner }}
+          JANUS_RELEASE_REPO: ${{ vars.JANUS_RELEASE_REPO || github.event.repository.name }}
+          # A code-signing certificate (.pfx, base64) and its password. Without them dist builds an unsigned
+          # installer (and clears any CSC_* so a macOS certificate is never used for Windows).
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: node scripts/dist.mjs --win --publish
+
+  linux:
+    needs: draft
+    # On a tag push it waits for the draft; on a manual run the draft job is skipped and the Linux job still runs.
+    if: ${{ !cancelled() && (needs.draft.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Publishing happens only on a tag push; a manual run builds and smoke-checks without uploading anything.
+      PUBLISH: ${{ github.event_name == 'push' && '--publish' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx -y pnpm@10 install --frozen-lockfile
+      - run: npx -y pnpm@10 -r typecheck
+      - run: npx -y pnpm@10 -r test
+      - name: Build (and, on a tag, publish to the draft release)
+        working-directory: apps/desktop
+        env:
+          # No signing for Linux. The token is only handed over when publishing.
+          GH_TOKEN: ${{ github.event_name == 'push' && (secrets.JANUS_RELEASE_TOKEN || secrets.GITHUB_TOKEN) || '' }}
+          JANUS_RELEASE_OWNER: ${{ vars.JANUS_RELEASE_OWNER || github.repository_owner }}
+          JANUS_RELEASE_REPO: ${{ vars.JANUS_RELEASE_REPO || github.event.repository.name }}
+        run: node scripts/dist.mjs --linux $PUBLISH
+      # The AppImage toolset (1.0.x, static runtime) is marked beta by electron-builder: check that the packaged AppImage
+      # starts, stays up and that the app sees APPIMAGE set (it logs "[platform] appimage=<bool>", a state and no path).
+      # On a tag the AppImage is already in the draft; a failure here means the draft must not be published.
+      - name: AppImage smoke check
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v xvfb-run >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q xvfb; }
+          app=$(ls apps/desktop/release/*.AppImage | head -n 1)
+          chmod +x "$app"
+          home="$RUNNER_TEMP/appimage-home"
+          log="$RUNNER_TEMP/appimage.log"
+          mkdir -p "$home"
+          # APPIMAGE_EXTRACT_AND_RUN: the runtime unpacks instead of mounting, so the check does not depend on FUSE on the
+          # runner (the runtime still sets APPIMAGE). --no-sandbox: Chromium's sandbox needs unprivileged user namespaces,
+          # which Ubuntu 24.04's AppArmor restricts for unconfined binaries, and an AppImage cannot ship a setuid helper.
+          HOME="$home" XDG_CONFIG_HOME="$home/.config" APPIMAGE_EXTRACT_AND_RUN=1 \
+            setsid xvfb-run -a "$app" --no-sandbox >"$log" 2>&1 &
+          pid=$!
+          # Wait (up to ~60 s) for the startup line or for the app to exit, then check it is still running.
+          seen=no
+          for _ in $(seq 1 60); do
+            if grep -qx '\[platform\] appimage=true' "$log"; then seen=yes; break; fi
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          alive=yes
+          kill -0 "$pid" 2>/dev/null || alive=no
+          kill -TERM -- "-$pid" 2>/dev/null || true
+          sleep 3
+          kill -KILL -- "-$pid" 2>/dev/null || true
+          echo "--- app output ---"
+          cat "$log"
+          echo "------------------"
+          [ "$seen" = yes ] || { echo "AppImage smoke: FAIL (the app did not report APPIMAGE set)"; exit 1; }
+          [ "$alive" = yes ] || { echo "AppImage smoke: FAIL (the app exited after starting)"; exit 1; }
+          echo "AppImage smoke: PASS"

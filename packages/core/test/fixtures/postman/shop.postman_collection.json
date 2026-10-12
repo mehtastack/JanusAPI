@@ -1,0 +1,190 @@
+{
+  "info": {
+    "_postman_id": "8f1c2a7e-3b9d-4c51-a0e2-6d7f8e9a1b2c",
+    "name": "Shop API",
+    "description": "The shop's public API. This description is dropped on import.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "event": [
+    { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.environment.set('ts', Date.now());"] } },
+    { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('ok', () => pm.response.to.be.ok);"] } }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "https://shop.example.test/api", "type": "string" },
+    { "key": "pageSize", "value": 20, "type": "number" },
+    { "key": "webhookSecret", "value": "whsec-live-0011223344", "type": "string" },
+    { "key": "signingSalt", "value": "salt-998877", "type": "secret" },
+    { "key": "legacyHost", "value": "old.example.test", "disabled": true }
+  ],
+  "item": [
+    {
+      "name": "Products",
+      "description": "Catalogue endpoints",
+      "event": [
+        { "listen": "prerequest", "script": { "exec": ["console.log('folder pre');"], "type": "text/javascript" } }
+      ],
+      "item": [
+        {
+          "name": "List products",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["pm.variables.set('q', 'shoes');", "console.log('pre');"], "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": ["pm.test('status is 200', function () {", "  pm.response.to.have.status(200);", "});"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-Debug", "value": "1", "disabled": true }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products?limit={{pageSize}}&q=shoes&sort=price",
+              "host": ["{{baseUrl}}"],
+              "path": ["products"],
+              "query": [
+                { "key": "limit", "value": "{{pageSize}}" },
+                { "key": "q", "value": "shoes" },
+                { "key": "sort", "value": "price", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get product",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/products/:productId",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", ":productId"],
+              "variable": [{ "key": "productId", "value": "p-100" }]
+            }
+          }
+        },
+        {
+          "name": "Reviews",
+          "auth": { "type": "apikey", "apikey": [
+            { "key": "key", "value": "X-Review-Key", "type": "string" },
+            { "key": "value", "value": "rk-abcdef123456", "type": "string" },
+            { "key": "in", "value": "header", "type": "string" }
+          ] },
+          "item": [
+            {
+              "name": "Create review",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{$guid}}\",\n  \"rating\": 5,\n  \"at\": {{$timestamp}}\n}", "options": { "raw": { "language": "json" } } },
+                "url": "{{baseUrl}}/reviews"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Create order (form)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "body": { "mode": "urlencoded", "urlencoded": [
+              { "key": "sku", "value": "p-100" },
+              { "key": "qty", "value": "2" },
+              { "key": "coupon", "value": "SAVE10", "disabled": true }
+            ] },
+            "url": "{{baseUrl}}/orders"
+          }
+        },
+        {
+          "name": "Upload invoice",
+          "request": {
+            "method": "PUT",
+            "body": { "mode": "formdata", "formdata": [
+              { "key": "orderId", "value": "o-1", "type": "text" },
+              { "key": "file", "type": "file", "src": "/Users/someone/invoice.pdf" }
+            ] },
+            "url": "{{baseUrl}}/orders/o-1/invoice"
+          }
+        },
+        {
+          "name": "Order notes (text)",
+          "request": {
+            "method": "PATCH",
+            "body": { "mode": "raw", "raw": "please gift wrap" },
+            "url": "{{baseUrl}}/orders/o-1/notes"
+          }
+        },
+        {
+          "name": "Raw JSON without language",
+          "request": {
+            "method": "POST",
+            "body": { "mode": "raw", "raw": "{\"a\": 1}" },
+            "url": "{{baseUrl}}/orders/raw"
+          }
+        },
+        {
+          "name": "Upload binary",
+          "request": {
+            "method": "POST",
+            "body": { "mode": "file", "file": { "src": "/tmp/data.bin" } },
+            "url": "{{baseUrl}}/orders/binary"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search (GraphQL)",
+      "request": {
+        "method": "POST",
+        "body": { "mode": "graphql", "graphql": { "query": "query($q: String!) { search(q: $q) { id } }", "variables": "{\"q\": \"shoes\"}" } },
+        "url": "{{baseUrl}}/graphql"
+      }
+    },
+    {
+      "name": "Auth variants",
+      "item": [
+        { "name": "Basic", "request": { "method": "GET", "auth": { "type": "basic", "basic": [
+          { "key": "username", "value": "shop-operator" }, { "key": "password", "value": "hunter2-pass" }
+        ] }, "url": "https://shop.example.test/admin" } },
+        { "name": "Bearer literal", "request": { "method": "GET", "auth": { "type": "bearer", "bearer": [
+          { "key": "token", "value": "tok-literal-777888" }
+        ] }, "url": "https://shop.example.test/me" } },
+        { "name": "Api key in query", "request": { "method": "GET", "auth": { "type": "apikey", "apikey": [
+          { "key": "key", "value": "api_key" }, { "key": "value", "value": "{{apiKey}}" }, { "key": "in", "value": "query" }
+        ] }, "url": "https://shop.example.test/q" } },
+        { "name": "OAuth2", "request": { "method": "GET", "auth": { "type": "oauth2", "oauth2": [
+          { "key": "grant_type", "value": "client_credentials" },
+          { "key": "accessTokenUrl", "value": "https://auth.example.test/token" },
+          { "key": "clientId", "value": "shop-client" },
+          { "key": "clientSecret", "value": "cs-secret-445566" },
+          { "key": "scope", "value": "read write" },
+          { "key": "client_authentication", "value": "body" },
+          { "key": "addTokenTo", "value": "header" },
+          { "key": "tokenName", "value": "Shop token" }
+        ] }, "url": "https://shop.example.test/oauth" } },
+        { "name": "Digest", "request": { "method": "GET", "auth": { "type": "digest", "digest": [
+          { "key": "username", "value": "digest-user" }, { "key": "password", "value": "digest-pass-998" },
+          { "key": "algorithm", "value": "SHA-256" }, { "key": "realm", "value": "shop" }, { "key": "qop", "value": "auth" },
+          { "key": "nonce", "value": "old-nonce-1" }, { "key": "opaque", "value": "old-opaque-1" },
+          { "key": "nonceCount", "value": "" }, { "key": "clientNonce", "value": "" }
+        ] }, "url": "https://shop.example.test/digest" } },
+        { "name": "AWS", "request": { "method": "GET", "auth": { "type": "awsv4", "awsv4": [
+          { "key": "accessKey", "value": "AKIAEXAMPLEKEY12345" }, { "key": "secretKey", "value": "aws-secret-776655" },
+          { "key": "sessionToken", "value": "aws-session-554433" }, { "key": "region", "value": "eu-west-1" },
+          { "key": "service", "value": "s3" }, { "key": "addAuthDataToQuery", "value": false }
+        ] }, "url": "https://shop.example.test/aws" } },
+        { "name": "NTLM", "request": { "method": "GET", "auth": { "type": "ntlm" }, "url": "https://shop.example.test/ntlm" } },
+        { "name": "OAuth1", "request": { "method": "GET", "auth": { "type": "oauth1" }, "url": "https://shop.example.test/oauth1" } },
+        { "name": "Hawk", "request": { "method": "GET", "auth": { "type": "hawk" }, "url": "https://shop.example.test/hawk" } },
+        { "name": "Akamai", "request": { "method": "GET", "auth": { "type": "edgegrid" }, "url": "https://shop.example.test/akamai" } },
+        { "name": "Custom verb", "request": { "method": "PROPFIND", "url": "https://shop.example.test/dav" } }
+      ]
+    }
+  ]
+}

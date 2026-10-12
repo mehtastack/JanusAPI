@@ -1,0 +1,44 @@
+{
+  "info": {
+    "name": "Legacy Billing",
+    "_postman_id": "1d2e3f40-0000-4000-8000-000000000001",
+    "schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json"
+  },
+  "auth": { "type": "basic", "basic": { "username": "{{billingUser}}", "password": "{{billingPass}}" } },
+  "item": [
+    {
+      "name": "Invoices",
+      "auth": { "type": "bearer", "bearer": { "token": "{{invoiceToken}}" } },
+      "item": [
+        {
+          "name": "List invoices",
+          "request": {
+            "url": "https://billing.example.test/v1/invoices?status=open&page=1",
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json", "description": "" }],
+            "body": {}
+          }
+        },
+        {
+          "name": "Pay invoice",
+          "request": {
+            "url": {
+              "protocol": "https",
+              "host": ["billing", "example", "test"],
+              "port": "8443",
+              "path": ["v1", "invoices", "42", "pay"],
+              "query": [{ "key": "dryRun", "value": "true" }]
+            },
+            "method": "POST",
+            "auth": { "type": "apikey", "apikey": { "key": "X-Pay-Key", "value": "pk-legacy-123456", "in": "header" } },
+            "body": { "mode": "raw", "raw": "{\"amount\": 100}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "request": "https://billing.example.test/health"
+    }
+  ]
+}

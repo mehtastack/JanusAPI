@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="Demo" tests="4" failures="1" errors="1" skipped="1" time="1.234">
+  <testsuite name="users" tests="2" failures="1" errors="0" skipped="0" time="0.042">
+    <testcase classname="users" name="List &lt;users&gt; &amp; &quot;friends&quot;" time="0.012"/>
+    <testcase classname="users" name="Create" time="0.030">
+      <failure message="has id">has id: expected undefined to exist</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="auth" tests="1" failures="0" errors="1" skipped="0" time="0.000">
+    <testcase classname="auth/basic" name="Me" time="0.000">
+      <error message="secret variable `token` has no value — pass --var token=… or set JANUS_VAR_token">secret variable `token` has no value — pass --var token=… or set JANUS_VAR_token</error>
+    </testcase>
+  </testsuite>
+  <testsuite name="(root)" tests="1" failures="0" errors="0" skipped="1" time="0.000">
+    <testcase classname="(root)" name="Later" time="0.000">
+      <skipped message="stopped"/>
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -1,0 +1,24 @@
+{
+  "name": "@apijanus/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "janus": "dist/janus.mjs"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs && vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@apijanus/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@jitl/quickjs-singlefile-mjs-release-sync": "0.31.0",
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

@@ -1,0 +1,30 @@
+# Typecheck and unit tests on macOS, Windows and Linux for pushes to main and every pull request. Unit tests never launch
+# Electron, so no display server is needed; the Playwright e2e suite is not run in CI.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx -y pnpm@10 install --frozen-lockfile
+      - run: npx -y pnpm@10 -r typecheck
+      - run: npx -y pnpm@10 -r test

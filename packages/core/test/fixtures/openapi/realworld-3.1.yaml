@@ -1,0 +1,47 @@
+openapi: 3.1.0
+info: { title: "Real World API" }
+servers: [ { url: /api } ]
+paths:
+  /orders:
+    parameters: [ { name: X-Tenant, in: header, required: true, schema: { type: string } } ]
+    post:
+      operationId: dup
+      security: [ { apiKey: [] } ]
+      parameters: [ { name: dryRun, in: query, required: true, schema: { type: boolean } } ]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema: { type: object, properties: { item: { type: string }, qty: { type: integer } } }
+      responses: { "200": { description: ok } }
+  /orders/{id}:
+    get:
+      operationId: dup
+      security: [ { oauth: [read] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses: { "200": { description: ok } }
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: "#/components/schemas/Base" }
+                - { type: object, properties: { note: { type: [string, "null"] } } }
+      responses: { "200": { description: ok } }
+    delete:
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "other.yaml#/Thing" }
+      responses: { "204": { description: gone } }
+components:
+  securitySchemes:
+    apiKey: { type: apiKey, in: header, name: X-Api-Key }
+    oauth:
+      type: oauth2
+      flows: { clientCredentials: { tokenUrl: "https://auth.test/token", scopes: { read: r } } }
+  schemas:
+    Base:
+      oneOf:
+        - { type: object, properties: { id: { type: string } } }
+        - { type: object, properties: { code: { type: integer } } }

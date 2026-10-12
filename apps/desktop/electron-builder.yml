@@ -1,0 +1,73 @@
+# Build with scripts/dist.mjs (pnpm dist): it is the supported entry point and sets targets, signing and publish.
+appId: com.apijanus.desktop
+productName: JanusAPI
+copyright: Copyright © 2026 JanusAPI
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+npmRebuild: false
+# Static-runtime AppImage toolset: no libfuse2 needed on Ubuntu 22.04+, and its tools run on Apple-silicon Macs (the
+# default FUSE2 toolset ships only an x86_64 macOS mksquashfs). electron-builder marks 1.0.x as beta: CI must confirm
+# the packaged AppImage starts with APPIMAGE set.
+toolsets:
+  appimage: "1.0.3"
+asar: true
+mac:
+  category: public.app-category.developer-tools
+  icon: resources/icon.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  artifactName: JanusAPI-${version}-${arch}.${ext}
+dmg:
+  artifactName: JanusAPI-${version}-${arch}.${ext}
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: JanusAPI-Setup-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: JanusAPI
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  icon: build/icons
+  category: Development
+  executableName: janusapi
+  # StartupWMClass follows package.json desktopName (janusapi.desktop), matching Electron's Wayland app_id.
+  syncDesktopName: true
+  synopsis: API client with an AI assistant
+  description: JanusAPI is a desktop API client with Janus, an AI assistant that works with your own model provider or a local model.
+  # Placeholder for local builds; dist.mjs uses the release owner's GitHub noreply address for release builds.
+  maintainer: JanusAPI <maintainers@janusapi.invalid>
+appImage:
+  artifactName: JanusAPI-${version}-${arch}.${ext}
+deb:
+  packageName: janusapi
+  artifactName: janusapi_${version}_${arch}.${ext}
+  # Mirrors electron-builder 26.15.3's default deb dependencies (app-builder-lib FpmTarget.getDefaultDepends) plus
+  # libsecret-1-0 (Electron safeStorage on GNOME Keyring / KWallet). Setting `depends` replaces the default, so
+  # RECHECK this list against getDefaultDepends whenever electron-builder is upgraded.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- JanusAPI app icon: the logo 4e mark on an ink tile, sized to the macOS icon grid (824 px tile in a 1024 px canvas). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#0A0B0A"/>
+  <g transform="translate(512 512) scale(8.25) translate(-32 -32)" fill="none" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke="#3DF5B0" d="M22 10 C14 10 16 22 16 26 C16 30 9 32 9 32 C9 32 16 34 16 38 C16 42 14 54 22 54"/>
+    <path stroke="#3DF5B0" d="M42 10 C50 10 48 22 48 26 C48 30 55 32 55 32 C55 32 48 34 48 38 C48 42 50 54 42 54"/>
+    <line stroke="#FFFFFF" x1="32" y1="12" x2="32" y2="52"/>
+  </g>
+</svg>

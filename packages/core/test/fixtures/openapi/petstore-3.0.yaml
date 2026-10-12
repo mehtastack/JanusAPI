@@ -1,0 +1,53 @@
+openapi: 3.0.3
+info: { title: Petstore, version: 1.0.0 }
+servers:
+  - url: "https://{env}.petstore.test/v1"
+    variables: { env: { default: api } }
+security: [ { bearerAuth: [] } ]
+tags: [ { name: pets } ]
+paths:
+  /pets:
+    get:
+      tags: [pets]
+      operationId: listPets
+      summary: List pets
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer }, example: 20 }
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+      responses: { "200": { description: ok } }
+    post:
+      tags: [pets]
+      operationId: createPet
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewPet" }
+      responses: { "201": { description: created } }
+  /pets/{petId}:
+    parameters:
+      - { name: petId, in: path, required: true, schema: { type: string }, example: "42" }
+    get:
+      tags: [pets]
+      operationId: getPet
+      responses: { "200": { description: ok } }
+  /health:
+    get:
+      security: []
+      responses: { "200": { description: ok } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+  schemas:
+    NewPet:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        tag: { type: string, enum: [dog, cat] }
+        age: { type: integer }
+        owner: { $ref: "#/components/schemas/Owner" }
+    Owner:
+      type: object
+      properties:
+        name: { type: string }
+        pets: { type: array, items: { $ref: "#/components/schemas/NewPet" } }
