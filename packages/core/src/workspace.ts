@@ -1,5 +1,4 @@
 import { EventEmitter } from 'node:events';
-import { watch, type FSWatcher } from 'node:fs';
 import { mkdir, lstat } from 'node:fs/promises';
 import { dirname, join, sep, posix } from 'node:path';
 import { stringify } from 'yaml';
@@ -9,6 +8,7 @@ import { DraftStore, type DraftResult, type EditSource } from './drafts';
 import type { EditOp } from './ops';
 import { applyOpsToSource } from './docops';
 import { writeFileAtomic, writeFileExclusive, readFileNoFollow, parseYamlFile, stringifyRequest } from './fileio';
+import { watchTree, type TreeWatcher } from './watch';
 
 export type WorkspaceEvent =
   | { type: 'collection-changed' }
@@ -25,7 +25,7 @@ export class Workspace extends EventEmitter<{ event: [WorkspaceEvent] }> {
   private conflicts = new Map<string, 'modified' | 'deleted'>();
   private keepOverride = new Set<string>();
   private timers = new Map<string, NodeJS.Timeout>();
-  private watcher?: FSWatcher;
+  private watcher?: TreeWatcher;
   private queue: Promise<void> = Promise.resolve();
   private closed = false;
 
@@ -477,9 +477,9 @@ export class Workspace extends EventEmitter<{ event: [WorkspaceEvent] }> {
   }
 
   private startWatching(): void {
-    this.watcher = watch(this.collection.root, { recursive: true }, (_event, filename) => {
+    this.watcher = watchTree(this.collection.root, (_event, filename) => {
       if (!filename) return;
-      let id = filename.toString().split(sep).join('/');
+      let id = filename.split(sep).join('/');
       if (id.startsWith('.apijanus')) return;
       if (id.endsWith('.tmp')) {
         // Atomic-write temp files are `<file>.<hex>.tmp`; map request temps back to the request.

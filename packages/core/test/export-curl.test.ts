@@ -422,7 +422,8 @@ describe('file uploads', () => {
       { name: 'title', value: 'Hi' },
       { name: 'doc', value: '', kind: 'file', file: { path: '', contentType: 'application/pdf' } },
     ] });
-    expect(plan.warnings).toContain('Choose a file for doc (the command used /abs/dir/report.pdf)');
+    // The export names the path as this system spells it (\abs\dir\report.pdf on Windows).
+    expect(plan.warnings).toContain(`Choose a file for doc (the command used ${normalize('/abs/dir/report.pdf')})`);
     const bin = req({ method: 'PUT', headers: [{ name: 'Content-Type', value: 'image/png' }], body: { type: 'binary', file: { path: '/abs/a.png' } } });
     const binBack = parseCurl(requestToCurl(bin, ctx())).requests[0]!.request;
     expect(binBack).toMatchObject({ method: 'PUT', body: { type: 'binary', file: { path: '' } } });

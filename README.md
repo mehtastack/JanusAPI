@@ -26,8 +26,7 @@ npx -y pnpm@10 --filter @apijanus/desktop dist
 The app lands in `apps/desktop/release/`. A macOS build without a Developer ID certificate is unsigned, so macOS blocks
 the first open. Try to open it once, then choose **Open Anyway** in System Settings → Privacy & Security (on macOS 14
 and earlier, Control-click the app → **Open** also works). If macOS instead says the app is damaged, run
-`xattr -dr com.apple.quarantine /Applications/JanusAPI.app`. [docs/releasing.md](docs/releasing.md) covers building,
-signing, notarization and cutting a release on each system.
+`xattr -dr com.apple.quarantine /Applications/JanusAPI.app`.
 
 ## Scripting
 

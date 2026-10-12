@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { constants, lstat, mkdir, open } from 'node:fs/promises';
+import { constants, lstat, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { resolveInsideReal } from '../collection';
-import { writeFileAtomic } from '../fileio';
+import { openNoFollow, writeFileAtomic } from '../fileio';
 import { SCHEMA_INPUT_LIMIT } from './build';
 
 const BAD_URL = 'The request URL is not a full http(s) URL; check its variables';
@@ -73,7 +73,7 @@ async function isRealDir(path: string): Promise<boolean | undefined> {
 async function readBounded(path: string): Promise<string | undefined> {
   let fh;
   try {
-    fh = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    fh = await openNoFollow(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === 'ENOENT' || code === 'ELOOP' || code === 'ENOTDIR' || code === 'EISDIR') return undefined;

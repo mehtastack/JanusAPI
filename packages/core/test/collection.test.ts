@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFile, access } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { loadCollection, initCollection, folderChain, resolveInside } from '../src';
 import { tempDir, writeFiles, REQUEST_YAML } from './helpers';
 
@@ -84,7 +84,7 @@ describe('initCollection on an existing collection', () => {
 
 describe('resolveInside', () => {
   it('rejects paths that escape the collection', () => {
-    expect(resolveInside('/c', 'a/b.req.yml')).toBe('/c/a/b.req.yml');
+    expect(resolveInside('/c', 'a/b.req.yml')).toBe(resolve('/c', 'a/b.req.yml'));
     expect(() => resolveInside('/c', '../x.req.yml')).toThrow('Path escapes the collection: ../x.req.yml');
     expect(() => resolveInside('/c', '/etc/passwd')).toThrow(/escapes/);
   });

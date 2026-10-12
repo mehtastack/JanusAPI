@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { readFile, readdir, writeFile, symlink } from 'node:fs/promises';
+import { constants, readFile, readdir, writeFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { parsePointer, formatPointer, parseYamlFile, writeFileAtomic, writeFileExclusive, applyOpsToSource, RequestSchema } from '../src';
+import { parsePointer, formatPointer, parseYamlFile, writeFileAtomic, writeFileExclusive, applyOpsToSource, RequestSchema, openNoFollowByCheck } from '../src';
 import { tempDir, REQUEST_YAML, canSymlink } from './helpers';
 
 describe('pointer', () => {
@@ -215,5 +215,29 @@ describe('writeFileExclusive (I2)', () => {
     expect(await readFile(join(outside, 'target'), 'utf8')).toBe('original');
     expect(await readdir(outside)).toEqual(['target']);
     expect((await readdir(dir)).sort()).toEqual(['a.req.yml', 'b.req.yml']);
+  });
+});
+
+describe('openNoFollowByCheck (the Windows path, without O_NOFOLLOW)', () => {
+  const APPEND = constants.O_RDWR | constants.O_APPEND | constants.O_CREAT;
+
+  it('opens and creates regular files', async () => {
+    const dir = await tempDir();
+    const fh = await openNoFollowByCheck(join(dir, 'new.jsonl'), APPEND, 0o600);
+    await fh.write('line\n');
+    await fh.close();
+    expect(await readFile(join(dir, 'new.jsonl'), 'utf8')).toBe('line\n');
+  });
+
+  it.skipIf(!canSymlink())('refuses a symlink with ELOOP and never writes through it', async () => {
+    const dir = await tempDir();
+    const outside = await tempDir();
+    await writeFile(join(outside, 'target'), '');
+    await symlink(join(outside, 'target'), join(dir, 'link.jsonl'));
+    await expect(openNoFollowByCheck(join(dir, 'link.jsonl'), APPEND, 0o600)).rejects.toMatchObject({ code: 'ELOOP' });
+    await symlink(join(outside, 'missing'), join(dir, 'dangling.jsonl'));
+    await expect(openNoFollowByCheck(join(dir, 'dangling.jsonl'), APPEND, 0o600)).rejects.toMatchObject({ code: 'ELOOP' });
+    expect(await readFile(join(outside, 'target'), 'utf8')).toBe('');
+    expect(await readdir(outside)).toEqual(['target']);
   });
 });

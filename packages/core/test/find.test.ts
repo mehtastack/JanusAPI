@@ -64,9 +64,14 @@ describe('findRequests', () => {
 
   it('stays fast on 2,000 requests', () => {
     const big = col(Array.from({ length: 2000 }, (_, i) => ({ id: `f${i % 20}/r${i}.req.yml`, folderId: `f${i % 20}`, request: req({ name: `Request number ${i} for widgets`, url: `/widgets/${i}/parts` }) })), Array.from({ length: 20 }, (_, i) => `f${i}`));
-    const t = performance.now();
-    findRequests(big, 'get widget parts 7');
-    expect(performance.now() - t).toBeLessThan(20 * 5); // generous under CI noise; tighten locally
+    findRequests(big, 'get widget parts 7'); // warm-up: the first call pays for JIT compilation
+    let best = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const t = performance.now();
+      findRequests(big, 'get widget parts 7');
+      best = Math.min(best, performance.now() - t);
+    }
+    expect(best).toBeLessThan(20 * 5); // generous under CI noise; tighten locally
   });
 });
 

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { renameWithRetry } from './portable';
-import { assertNotSymlink } from './fileio';
-import { constants, lstat, mkdir, open, readdir, rm } from 'node:fs/promises';
+import { assertNotSymlink, openNoFollow } from './fileio';
+import { constants, lstat, mkdir, open, readdir, rm, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { resolveInsideReal } from './collection';
@@ -543,8 +543,6 @@ async function kind(path: string): Promise<'dir' | 'none' | 'other'> {
   }
 }
 
-const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
-
 /**
  * Request history of one collection, one JSONL file per UTC day in `<root>/.apijanus/history`. Entries are masked before they
  * get here (createHistoryEntry). The directory must be real (no symlinks), files are opened without following links, and
@@ -610,7 +608,7 @@ export class HistoryStore {
       const name = `${valid.time.slice(0, 10)}.jsonl`;
       if (!DAY_FILE.test(name)) throw new Error('Invalid entry time');
       const counts = await this.loadCounts(dir);
-      const fh = await open(join(dir, name), constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | NOFOLLOW, 0o600);
+      const fh = await openNoFollow(join(dir, name), constants.O_RDWR | constants.O_APPEND | constants.O_CREAT, 0o600);
       try {
         const st = await fh.stat();
         if (!st.isFile()) throw new Error(`${HISTORY_DIR}/${name} must be a regular file`);
@@ -779,7 +777,7 @@ export class HistoryStore {
 async function readTail(path: string, max: number): Promise<{ text: string; bytes: number } | undefined> {
   let fh;
   try {
-    fh = await open(path, constants.O_RDONLY | NOFOLLOW | (constants.O_NONBLOCK ?? 0));
+    fh = await openNoFollow(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === 'ENOENT' || code === 'ELOOP' || code === 'EISDIR' || code === 'ENOTDIR') return undefined;
@@ -813,7 +811,7 @@ async function readTail(path: string, max: number): Promise<{ text: string; byte
 async function countLines(path: string): Promise<number> {
   let fh;
   try {
-    fh = await open(path, constants.O_RDONLY | NOFOLLOW | (constants.O_NONBLOCK ?? 0));
+    fh = await openNoFollow(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
   } catch {
     return 0;
   }
@@ -839,7 +837,7 @@ async function countLines(path: string): Promise<number> {
  * place, so a large file is never read into memory.
  */
 async function dropFirstLines(path: string, k: number): Promise<void> {
-  const src = await open(path, constants.O_RDONLY | NOFOLLOW | (constants.O_NONBLOCK ?? 0));
+  let src: FileHandle | undefined = await openNoFollow(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
   const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
   let dst;
   try {
@@ -861,6 +859,9 @@ async function dropFirstLines(path: string, k: number): Promise<void> {
     }
     await dst.close();
     dst = undefined;
+    // Windows cannot replace a file that is still open, so the source is closed before the rename.
+    await src.close();
+    src = undefined;
     if ((await lstat(path)).isSymbolicLink()) throw new Error(`Refusing to write through a symlink: ${path}`);
     await renameWithRetry(tmp, path, { beforeRetry: () => assertNotSymlink(path) });
   } catch (e) {
@@ -868,6 +869,6 @@ async function dropFirstLines(path: string, k: number): Promise<void> {
     await rm(tmp, { force: true });
     throw e;
   } finally {
-    await src.close();
+    await src?.close();
   }
 }

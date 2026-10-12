@@ -1,6 +1,6 @@
 # Tag-triggered release: pushing a tag vX.Y.Z (matching apps/desktop/package.json) builds JanusAPI for macOS, Windows
 # and Linux and uploads all of it to one DRAFT GitHub release (created first by the `draft` job, so the build jobs never
-# race to create duplicates), which a maintainer checks and publishes by hand. Signing happens only when the secrets below exist; without them the builds are unsigned (see docs/releasing.md).
+# race to create duplicates), which a maintainer checks and publishes by hand. Signing happens only when the secrets below exist; without them the builds are unsigned.
 #
 # Run by hand (workflow_dispatch), only the Linux job runs: it builds the AppImage and .deb WITHOUT publishing and runs
 # the AppImage smoke check. Nothing is uploaded except on a tag push.

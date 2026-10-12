@@ -1,6 +1,6 @@
 import { Document, isScalar, parseDocument, Scalar } from 'yaml';
 import type { z } from 'zod';
-import { open, lstat, rm, link, constants } from 'node:fs/promises';
+import { open, lstat, rm, link, constants, type FileHandle } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { renameWithRetry } from './portable';
 import { FORMAT_VERSION } from './schema';
@@ -35,6 +35,35 @@ export async function assertNotSymlink(path: string): Promise<void> {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
   }
   if (isLink) throw new Error(`Refusing to write through a symlink: ${path}`);
+}
+
+/**
+ * Opens `path` without following a symlink at its last component. POSIX has O_NOFOLLOW. Windows has no such flag, so there
+ * a link found by lstat is refused, and the opened handle must be the file lstat sees afterwards (a link swapped in between is
+ * caught). A refusal is an ELOOP error, as O_NOFOLLOW gives, so callers handle both platforms alike.
+ */
+export async function openNoFollow(path: string, flags: number, mode?: number): Promise<FileHandle> {
+  if (constants.O_NOFOLLOW !== undefined) return open(path, flags | constants.O_NOFOLLOW, mode);
+  return openNoFollowByCheck(path, flags, mode);
+}
+
+/** openNoFollow without O_NOFOLLOW (Windows): lstat before, and the handle compared with lstat after. Exported for tests. */
+export async function openNoFollowByCheck(path: string, flags: number, mode?: number): Promise<FileHandle> {
+  const refuse = () => Object.assign(new Error(`Refusing to open through a symlink: ${path}`), { code: 'ELOOP' });
+  try {
+    if ((await lstat(path)).isSymbolicLink()) throw refuse();
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+  }
+  const fh = await open(path, flags, mode);
+  try {
+    const [opened, now] = await Promise.all([fh.stat(), lstat(path)]);
+    if (now.isSymbolicLink() || opened.ino !== now.ino || opened.dev !== now.dev) throw refuse();
+  } catch (e) {
+    await fh.close();
+    throw e;
+  }
+  return fh;
 }
 
 export async function writeFileAtomic(path: string, text: string): Promise<void> {
@@ -96,7 +125,7 @@ export async function readFileNoFollow(path: string): Promise<string | undefined
   try {
     const st = await lstat(path);
     if (!st.isFile()) return undefined;
-    const fh = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    const fh = await openNoFollow(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
     try {
       if (!(await fh.stat()).isFile()) return undefined;
       return await fh.readFile('utf8');
