@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { join } from 'node:path';
 // @ts-expect-error plain ESM script without types
 import { appPlan, cliPlan, cliCmd, desktopEntry, onPath, parseInstallArgs } from '../scripts/install-plan.mjs';
 // @ts-expect-error plain ESM script without types
 import { localTargetsFor, platformFromArgs } from '../scripts/build-mode.mjs';
 
-const appDir = join('/repo', 'apps', 'desktop');
+// Plans use the target system's path form on any machine, so expectations are literal strings.
+const appDir = '/repo/apps/desktop';
 
 describe('parseInstallArgs', () => {
   it('installs the app by default, the CLI with --cli, only the CLI with --no-app', () => {
@@ -18,30 +18,30 @@ describe('parseInstallArgs', () => {
 
 describe('appPlan', () => {
   it('macOS: copies the arch-specific .app into /Applications', () => {
-    expect(appPlan({ platform: 'darwin', arch: 'arm64', home: '/Users/a', appDir })).toEqual({ kind: 'mac', source: join(appDir, 'release', 'mac-arm64', 'JanusAPI.app'), dest: '/Applications/JanusAPI.app' });
-    expect(appPlan({ platform: 'darwin', arch: 'x64', home: '/Users/a', appDir })).toMatchObject({ source: join(appDir, 'release', 'mac', 'JanusAPI.app') });
+    expect(appPlan({ platform: 'darwin', arch: 'arm64', home: '/Users/a', appDir })).toEqual({ kind: 'mac', source: '/repo/apps/desktop/release/mac-arm64/JanusAPI.app', dest: '/Applications/JanusAPI.app' });
+    expect(appPlan({ platform: 'darwin', arch: 'x64', home: '/Users/a', appDir })).toMatchObject({ source: '/repo/apps/desktop/release/mac/JanusAPI.app' });
   });
 
   it('Linux: installs under ~/.local with a launcher, a desktop entry and an icon', () => {
     const plan = appPlan({ platform: 'linux', arch: 'x64', home: '/home/a', appDir });
     expect(plan).toMatchObject({
-      kind: 'linux', source: join(appDir, 'release', 'linux-unpacked'), dest: '/home/a/.local/share/janusapi',
+      kind: 'linux', source: '/repo/apps/desktop/release/linux-unpacked', dest: '/home/a/.local/share/janusapi',
       executable: '/home/a/.local/share/janusapi/janusapi', sandbox: '/home/a/.local/share/janusapi/chrome-sandbox',
       launcher: '/home/a/.local/bin/janusapi', desktopFile: '/home/a/.local/share/applications/janusapi.desktop',
     });
-    expect(appPlan({ platform: 'linux', arch: 'arm64', home: '/home/a', appDir })).toMatchObject({ source: join(appDir, 'release', 'linux-arm64-unpacked') });
+    expect(appPlan({ platform: 'linux', arch: 'arm64', home: '/home/a', appDir })).toMatchObject({ source: '/repo/apps/desktop/release/linux-arm64-unpacked' });
   });
 
   it('Windows: runs the arch-specific installer; other systems are refused', () => {
-    expect(appPlan({ platform: 'win32', arch: 'x64', home: 'C:\\Users\\a', appDir })).toEqual({ kind: 'win', installer: join(appDir, 'release', 'JanusAPI-Setup-x64.exe') });
+    expect(appPlan({ platform: 'win32', arch: 'x64', home: 'C:\\Users\\a', appDir: 'C:\\repo\\apps\\desktop' })).toEqual({ kind: 'win', installer: 'C:\\repo\\apps\\desktop\\release\\JanusAPI-Setup-x64.exe' });
     expect(appPlan({ platform: 'freebsd', arch: 'x64', home: '/home/a', appDir })).toEqual({ error: 'JanusAPI cannot be installed on freebsd' });
   });
 });
 
 describe('cliPlan and helpers', () => {
   it('links janus into ~/.local/bin, or writes janus.cmd into WindowsApps', () => {
-    expect(cliPlan({ platform: 'darwin', home: '/Users/a', repo: '/repo' })).toEqual({ source: join('/repo', 'apps', 'cli', 'dist', 'janus.mjs'), link: '/Users/a/.local/bin/janus', kind: 'symlink' });
-    expect(cliPlan({ platform: 'win32', home: 'C:\\Users\\a', repo: '/repo', localAppData: 'L' })).toMatchObject({ link: join('L', 'Microsoft', 'WindowsApps', 'janus.cmd'), kind: 'cmd' });
+    expect(cliPlan({ platform: 'darwin', home: '/Users/a', repo: '/repo' })).toEqual({ source: '/repo/apps/cli/dist/janus.mjs', link: '/Users/a/.local/bin/janus', kind: 'symlink' });
+    expect(cliPlan({ platform: 'win32', home: 'C:\\Users\\a', repo: 'C:\\repo', localAppData: 'C:\\Users\\a\\AppData\\Local' })).toEqual({ source: 'C:\\repo\\apps\\cli\\dist\\janus.mjs', link: 'C:\\Users\\a\\AppData\\Local\\Microsoft\\WindowsApps\\janus.cmd', kind: 'cmd' });
     expect(cliCmd({ node: 'C:\\node.exe', source: 'C:\\r\\janus.mjs' })).toBe('@echo off\r\n"C:\\node.exe" "C:\\r\\janus.mjs" %*\r\n');
   });
 

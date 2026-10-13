@@ -1,4 +1,7 @@
-import { join } from 'node:path';
+import { posix, win32 } from 'node:path';
+
+/** Paths in the target system's form (POSIX for macOS and Linux), whatever machine computes the plan. */
+const pathFor = (platform) => (platform === 'win32' ? win32 : posix);
 
 /**
  * What `npm run install:app` (scripts/install-app.mjs at the repository root) builds and where it puts it. Pure: no file
@@ -17,6 +20,7 @@ export function parseInstallArgs(argv) {
 
 /** The desktop app's install plan for a platform and architecture. appDir is apps/desktop; home the user's home folder. */
 export function appPlan({ platform, arch, home, appDir }) {
+  const { join } = pathFor(platform);
   const release = join(appDir, 'release');
   if (platform === 'darwin') {
     return { kind: 'mac', source: join(release, arch === 'arm64' ? 'mac-arm64' : 'mac', 'JanusAPI.app'), dest: '/Applications/JanusAPI.app' };
@@ -41,6 +45,7 @@ export function appPlan({ platform, arch, home, appDir }) {
 
 /** Where the `janus` command goes: ~/.local/bin on macOS and Linux, the per-user WindowsApps folder (on PATH) on Windows. */
 export function cliPlan({ platform, home, repo, localAppData }) {
+  const { join } = pathFor(platform);
   const source = join(repo, 'apps', 'cli', 'dist', 'janus.mjs');
   if (platform === 'win32') {
     return { source, link: join(localAppData ?? join(home, 'AppData', 'Local'), 'Microsoft', 'WindowsApps', 'janus.cmd'), kind: 'cmd' };
