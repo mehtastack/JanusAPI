@@ -250,3 +250,22 @@ describe('test feed override', () => {
     expect(lines.join('\n')).not.toMatch(/https?:/);
   });
 });
+
+describe('UpdateService for a source install', () => {
+  it('is disabled and carries the folder and update command into its state', async () => {
+    const source = { folder: '/Users/a/JanusAPI', command: 'cd "/Users/a/JanusAPI" && git pull && npm run install:app' };
+    const { svc } = await make({ updater: undefined, build: 'unsigned', installs: false, release: undefined, source });
+    expect(svc.state()).toMatchObject({ kind: 'disabled', source });
+  });
+
+  it('copies its own update command through main, and nothing when there is none', async () => {
+    const copied: string[] = [];
+    const source = { folder: '/Users/a/JanusAPI', command: 'cd "/Users/a/JanusAPI" && git pull && npm run install:app' };
+    const { svc } = await make({ updater: undefined, release: undefined, source, writeClipboard: (t) => copied.push(t) });
+    expect(svc.copyCommand()).toEqual({ ok: true });
+    expect(copied).toEqual([source.command]);
+    const { svc: plain } = await make({ writeClipboard: (t) => copied.push(t) });
+    expect(plain.copyCommand()).toEqual({ ok: false });
+    expect(copied).toHaveLength(1);
+  });
+});

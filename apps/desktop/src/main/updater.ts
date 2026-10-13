@@ -27,6 +27,10 @@ export interface UpdateDeps {
   /** This build downloads and installs updates itself (see installsInPlace); otherwise Download opens the release page. */
   installs: boolean;
   release?: Release;
+  /** A source install: where it was built from and how to update it (shown in Settings → About instead of update checks). */
+  source?: { folder: string; command: string };
+  /** Writes text to the system clipboard (main is the only clipboard writer). */
+  writeClipboard?: (text: string) => void;
   settingsFile: string;
   openExternal(url: string): Promise<void>;
   emit(state: UpdateState): void;
@@ -47,6 +51,7 @@ export const updateSchemas = {
   'update:install': empty,
   'update:open-release': empty,
   'update:set-auto': z.object({ auto: z.boolean() }).strict(),
+  'update:copy-command': empty,
 } as const;
 type UpdateChannel = keyof typeof updateSchemas;
 
@@ -109,7 +114,7 @@ export class UpdateService {
   private checking?: Promise<UpdateState>;
 
   private constructor(private d: UpdateDeps, auto: boolean) {
-    this.s = { kind: d.updater ? 'idle' : 'disabled', current: d.current, build: d.build, installs: d.installs, auto };
+    this.s = { kind: d.updater ? 'idle' : 'disabled', current: d.current, build: d.build, installs: d.installs, auto, ...(d.source ? { source: d.source } : {}) };
     const u = d.updater;
     if (!u) return;
     // Only a build that installs in place downloads and installs itself; any other points at the release page.
@@ -208,6 +213,14 @@ export class UpdateService {
     if (url) await this.d.openExternal(url);
   }
 
+  /** Copies a source install's update command. Main copies its own command: the renderer never passes clipboard text. */
+  copyCommand(): { ok: boolean } {
+    const command = this.s.source?.command;
+    if (!command || !this.d.writeClipboard) return { ok: false };
+    this.d.writeClipboard(command);
+    return { ok: true };
+  }
+
   async setAuto(auto: boolean): Promise<UpdateState> {
     await writeFileAtomic(this.d.settingsFile, `${JSON.stringify({ auto })}\n`);
     this.set({ auto });
@@ -223,6 +236,7 @@ export class UpdateService {
       'update:install': { schema: s['update:install'], run: () => this.install() },
       'update:open-release': { schema: s['update:open-release'], run: () => this.openRelease() },
       'update:set-auto': { schema: s['update:set-auto'], run: (i: { auto: boolean }) => this.setAuto(i.auto) },
+      'update:copy-command': { schema: s['update:copy-command'], run: () => this.copyCommand() },
     };
   }
 }

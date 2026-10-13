@@ -88,6 +88,7 @@ export const CHANNELS = [
   'update:install',
   'update:open-release',
   'update:set-auto',
+  'update:copy-command',
 ] as const;
 export type Channel = (typeof CHANNELS)[number];
 
@@ -309,6 +310,8 @@ export interface UpdateState {
   error?: string;
   releaseUrl?: string;
   checkedAt?: number;
+  /** A source install (npm run install:app): the folder it was built from and the command that updates it. */
+  source?: { folder: string; command: string };
 }
 /** shortSecretsShown: hide mode left a secret shorter than 4 characters in the command (those are not hidden). */
 /** A JWT signed in main as Send would sign it (draft, effective auth, resolved variables): its decoded parts as JSON text. */
@@ -518,6 +521,7 @@ export interface ChannelMap {
   /** Opens the available version's GitHub release page in the browser (builds that do not install in place download from there). */
   'update:open-release': { payload: Empty; result: void };
   'update:set-auto': { payload: { auto: boolean }; result: UpdateState };
+  'update:copy-command': { payload: Empty; result: { ok: boolean } };
 }
 // Compile-time check: every channel has an entry and nothing extra sneaks in.
 type MissingChannels = Exclude<Channel, keyof ChannelMap>;

@@ -429,6 +429,7 @@ label.check { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; 
 .about-settings { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border); padding-top: 18px; }
 .about-settings h2 { font: 600 18px var(--font); margin: 0; }
 .about-settings p { margin: 0; }
+.about-settings .update-command { display: block; font: 12.5px var(--mono, ui-monospace, monospace); padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; user-select: all; overflow-wrap: anywhere; }
 .about-settings fieldset p { flex-basis: 100%; }
 .cookie-domain { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; background: var(--panel); }
 .cookie-domain-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

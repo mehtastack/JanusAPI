@@ -23,7 +23,7 @@ import { ImportService, workerConvert } from './import';
 import { GraphqlService, workerBuild } from './graphql';
 import { FakeProvider, type LLMEvent } from '@apijanus/agent';
 import { UpdateService, electronUpdater, testFeedUrl, updaterFeed, updaterRelease } from './updater';
-import { buildKind, releaseInfo } from './build-info';
+import { buildKind, releaseInfo, sourceFolder, sourceUpdateCommand } from './build-info';
 import { installsInPlace, secureStorageNotice, secureStorageUsable } from './platform';
 
 // Test switches never apply to a packaged build, even if APIJANUS_E2E is set in the user's shell.
@@ -321,7 +321,9 @@ async function start(): Promise<void> {
     build,
     installs,
     release,
+    ...(() => { const folder = app.isPackaged ? sourceFolder(pkg) : undefined; return folder ? { source: { folder, command: sourceUpdateCommand(folder, process.platform) } } : {}; })(),
     settingsFile: join(app.getPath('userData'), 'update-settings.json'),
+    writeClipboard: (text) => clipboard.writeText(text),
     openExternal: (url) => shell.openExternal(url),
     emit: (state) => emit('update:state', state),
     log: (line) => console.log(line),

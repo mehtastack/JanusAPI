@@ -112,3 +112,10 @@ describe('dropEmptySigningEnv', () => {
     expect(env).toEqual({ WIN_CSC_LINK: 'cert', PATH: '', GH_TOKEN: 't' });
   });
 });
+
+describe('buildConfig for a local build', () => {
+  it('records the checkout it was built from', () => {
+    expect(buildConfig({ platform: 'darwin', mode: { kind: 'unsigned', notarize: null, warnings: [] }, source: '/Users/a/JanusAPI' }).extraMetadata)
+      .toEqual({ janusBuild: 'unsigned', janusSource: '/Users/a/JanusAPI' });
+  });
+});

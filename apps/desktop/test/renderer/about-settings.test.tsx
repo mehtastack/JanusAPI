@@ -147,3 +147,18 @@ describe('update toasts', () => {
     expect(toastTexts()).toEqual(['JanusAPI 0.4.0 is available — see Settings → About']);
   });
 });
+
+describe('About for a source install', () => {
+  it('shows the update command instead of update checks', async () => {
+    const command = 'cd "/Users/a/JanusAPI" && git pull && npm run install:app';
+    const { about } = await openAbout({ kind: 'disabled', current: '0.1.0', build: 'unsigned', installs: false, auto: true, source: { folder: '/Users/a/JanusAPI', command } });
+    expect(await within(about).findByText('Installed from source')).toBeTruthy();
+    expect(within(about).getByText('To update, run this in a terminal:')).toBeTruthy();
+    expect(within(about).getByText(command)).toBeTruthy();
+    expect(within(about).getByRole('button', { name: 'Copy command' })).toBeTruthy();
+    expect(within(about).queryByRole('button', { name: 'Check for updates' })).toBeNull();
+    expect(within(about).queryByText('Unsigned build')).toBeNull();
+    fireEvent.click(within(about).getByRole('button', { name: 'Copy command' }));
+    await waitFor(() => expect(m!.calls.some((c) => c.channel === 'update:copy-command')).toBe(true));
+  });
+});

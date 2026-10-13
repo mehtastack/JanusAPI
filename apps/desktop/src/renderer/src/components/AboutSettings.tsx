@@ -32,6 +32,18 @@ function status(u: UpdateState, actions: ReturnType<typeof useActions>): { text:
   }
 }
 
+/** A source install has no update feed: it updates by pulling and rebuilding, so About shows that command instead. */
+function SourceUpdate({ command, copy }: { command: string; copy(): void }) {
+  return (
+    <fieldset>
+      <legend>Updates</legend>
+      <p>To update, run this in a terminal:</p>
+      <code className="update-command">{command}</code>
+      <button type="button" onClick={copy}>Copy command</button>
+    </fieldset>
+  );
+}
+
 /** Settings → About: the app's name, version and build, and its update status. */
 export function AboutSettings() {
   const u = useApp((s) => s.update);
@@ -45,7 +57,8 @@ export function AboutSettings() {
       <h2 id={`${uid}-h`}>About</h2>
       <p><strong>JanusAPI</strong></p>
       <p>Version {u.current}</p>
-      <p className="muted">{BUILD_LABEL[u.build]}</p>
+      <p className="muted">{u.source ? 'Installed from source' : BUILD_LABEL[u.build]}</p>
+      {u.source ? <SourceUpdate command={u.source.command} copy={() => void actions.copyUpdateCommand()} /> : (
       <fieldset>
         <legend>Updates</legend>
         <p aria-live="polite">{line.text}</p>
@@ -56,6 +69,7 @@ export function AboutSettings() {
           <span>Check automatically</span>
         </label>
       </fieldset>
+      )}
     </section>
   );
 }

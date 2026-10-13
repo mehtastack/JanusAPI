@@ -68,5 +68,5 @@ await build({
   projectDir: dir,
   targets: PLATFORMS[platform].createTarget(types, ...archs.map((a) => Arch[a])),
   publish: publish ? 'always' : 'never',
-  config: buildConfig({ platform, mode, owner, repo }),
+  config: buildConfig({ platform, mode, owner, repo, source: local ? join(dir, '..', '..') : undefined }),
 });

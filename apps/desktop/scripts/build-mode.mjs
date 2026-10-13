@@ -120,11 +120,13 @@ export function platformFromArgs(argv, hostPlatform) {
  * (both or neither). Release builds point the deb Homepage at the repository and use the owner's GitHub noreply
  * address as the deb Maintainer; local builds keep the yml placeholders.
  */
-export function buildConfig({ platform, mode, owner, repo }) {
+export function buildConfig({ platform, mode, owner, repo, source }) {
   const release = Boolean(owner && repo);
   return {
     extraMetadata: {
       janusBuild: mode.kind,
+      // A local build (npm run install:app) records the checkout it came from, so Settings → About can show how to update.
+      ...(source ? { janusSource: source } : {}),
       ...(release ? { janusRelease: { owner, repo }, homepage: `https://github.com/${owner}/${repo}` } : {}),
     },
     ...(platform === 'darwin' ? { mac: macSigning(mode) } : {}),

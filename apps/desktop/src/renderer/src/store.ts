@@ -241,6 +241,7 @@ export interface AppState {
   installUpdate(): Promise<void>;
   /** Opens the release page of the version on offer (unsigned builds). */
   openUpdateRelease(): Promise<void>;
+  copyUpdateCommand(): Promise<void>;
   setUpdateAuto(auto: boolean): Promise<void>;
   features: AppFeatures;
   loadFeatures(): Promise<void>;
@@ -879,6 +880,10 @@ export function createAppStore(api: Api): AppStore {
       },
       async openUpdateRelease() {
         await guard(() => api.call('update:open-release', {}));
+      },
+      async copyUpdateCommand() {
+        const r = await guard(() => api.call('update:copy-command', {}));
+        if (r) get().notify(r.ok ? 'Update command copied' : 'Could not copy; select the command and copy it');
       },
       async setUpdateAuto(auto) {
         const u = await guard(() => api.call('update:set-auto', { auto }));

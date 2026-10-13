@@ -187,7 +187,7 @@ An app you build yourself opens straight away: macOS and Windows show no "uniden
 | `npm run install:app -- --cli` | Also installs the `janus` command-line runner (in `~/.local/bin`, or on your PATH on Windows) |
 | `npm run install:app -- --no-app` | Installs only the `janus` command |
 
-To update, run `git pull && npm run install:app` in the same folder. The first run takes a few minutes, mostly installing dependencies; later runs are faster.
+To update, run `git pull && npm run install:app` in the same folder; **Settings → About** in the app shows this command for your install, ready to copy. The first run takes a few minutes, mostly installing dependencies; later runs are faster.
 
 ## Contributing
 
