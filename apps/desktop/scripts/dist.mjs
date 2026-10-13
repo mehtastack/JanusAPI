@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, Platform, Arch } from 'electron-builder';
 import {
-  buildMode, buildConfig, winSigning, dropEmptySigningEnv, targetsFor, platformFromArgs, UNSIGNED_NOTICE, UNSIGNED_WIN_NOTICE,
+  buildMode, buildConfig, winSigning, dropEmptySigningEnv, targetsFor, localTargetsFor, platformFromArgs, UNSIGNED_NOTICE, UNSIGNED_WIN_NOTICE,
 } from './build-mode.mjs';
 
 // The desktop app's folder: the script works from any current directory.
@@ -14,6 +14,10 @@ const publish = argv.includes('--publish');
 const picked = platformFromArgs(argv, process.platform);
 if (picked.error) { console.error(`error: ${picked.error}`); process.exit(1); }
 const { platform } = picked;
+// --local: an unpacked app (or the Windows installer) for this machine's architecture only, for npm run install:app.
+const local = argv.includes('--local');
+const targets = local ? localTargetsFor(platform, process.arch) : targetsFor(platform);
+if (targets.error) { console.error(`error: ${targets.error}`); process.exit(1); }
 
 // The keychain holds Developer ID identities only on macOS, and only matters for a macOS build.
 let identities = [];
@@ -31,7 +35,11 @@ const notice = (text) => {
   const line = '─'.repeat(text.length + 2);
   console.warn(`┌${line}┐\n│ ${text} │\n└${line}┘`);
 };
-if (platform === 'darwin') {
+if (local) {
+  // Built and installed on this machine: never quarantined, so neither Gatekeeper nor SmartScreen asks about it.
+  console.log(`Local build for this ${platform === 'darwin' ? 'Mac' : 'machine'} (${process.arch})`);
+  if (platform === 'win32') { const { clearEnv, setEnv } = winSigning(mode); for (const name of clearEnv) delete process.env[name]; Object.assign(process.env, setEnv); }
+} else if (platform === 'darwin') {
   if (mode.kind === 'unsigned') notice(UNSIGNED_NOTICE);
   else console.log(`Signed build; notarizing with ${mode.notarize === 'api-key' ? 'an App Store Connect API key' : 'an Apple ID'}`);
 } else if (platform === 'win32') {
@@ -55,7 +63,7 @@ const viteBin = join(dirname(vitePkg), require(vitePkg).bin['electron-vite']);
 execFileSync(process.execPath, [viteBin, 'build'], { cwd: dir, stdio: 'inherit' });
 
 const PLATFORMS = { darwin: Platform.MAC, win32: Platform.WINDOWS, linux: Platform.LINUX };
-const { types, archs } = targetsFor(platform);
+const { types, archs } = targets;
 await build({
   projectDir: dir,
   targets: PLATFORMS[platform].createTarget(types, ...archs.map((a) => Arch[a])),

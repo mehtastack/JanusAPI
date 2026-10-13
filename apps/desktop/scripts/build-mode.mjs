@@ -81,6 +81,18 @@ const TARGETS = {
   linux: { types: ['AppImage', 'deb'], archs: ['x64'] },
 };
 
+/** The architectures a local build (dist --local) supports on each platform. */
+const LOCAL_ARCHS = { darwin: ['arm64', 'x64'], win32: ['x64', 'arm64'], linux: ['x64', 'arm64'] };
+
+/**
+ * A local build for the machine it runs on (npm run install:app): only this architecture, as an unpacked app where one
+ * can be installed by copying (macOS, Linux), or as the installer (Windows).
+ */
+export function localTargetsFor(platform, arch) {
+  if (!LOCAL_ARCHS[platform]?.includes(arch)) return { error: `cannot build JanusAPI for ${platform} on ${arch}` };
+  return { types: [platform === 'win32' ? 'nsis' : 'dir'], archs: [arch] };
+}
+
 /** The artifact formats and architectures built for a platform. */
 export function targetsFor(platform) {
   return TARGETS[platform];
@@ -93,8 +105,9 @@ const FLAGS = { '--mac': 'darwin', '--win': 'win32', '--linux': 'linux' };
  * Any other `--` option except --publish is rejected (a typo such as --publsh must not silently build locally).
  */
 export function platformFromArgs(argv, hostPlatform) {
-  const unknown = argv.find((a) => a.startsWith('--') && !(a in FLAGS) && a !== '--publish');
-  if (unknown) return { error: `unknown option ${JSON.stringify(unknown)}; use --mac, --win, --linux, --publish` };
+  const unknown = argv.find((a) => a.startsWith('--') && !(a in FLAGS) && a !== '--publish' && a !== '--local');
+  if (unknown) return { error: `unknown option ${JSON.stringify(unknown)}; use --mac, --win, --linux, --publish, --local` };
+  if (argv.includes('--local') && (argv.includes('--publish') || argv.some((a) => a in FLAGS))) return { error: '--local builds for this machine only; it takes no platform and cannot --publish' };
   const picked = argv.filter((a) => a in FLAGS).map((a) => FLAGS[a]);
   if (picked.length > 1) return { error: 'pass only one of --mac, --win, --linux' };
   const platform = picked[0] ?? hostPlatform;

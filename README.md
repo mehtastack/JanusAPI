@@ -16,6 +16,8 @@ Build, send and test HTTP and GraphQL requests. Ask Janus why a request fails an
 
 <sub>macOS button: Apple silicon · also for <a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-x64.dmg">Intel Macs</a> · Linux as <a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/janusapi_amd64.deb">.deb</a> · <a href="https://github.com/mehtastack/JanusAPI/releases">all releases</a></sub>
 
+<sub>Downloaded builds are not signed yet, so macOS and Windows ask once before the first open (<a href="#install">how</a>). Or <a href="#install-from-source-one-command">install from source with one command</a>, which never asks.</sub>
+
 [Website](https://mehtastack.com/janusapi) · [All releases](https://github.com/mehtastack/JanusAPI/releases) · [Why JanusAPI](#janusapi-vs-postman-vs-bruno)
 
 <img src="assets/janus-demo.svg" alt="Animated: a request fails with 401, Janus switches the auth to a Bearer token, asks before sending, and the request returns 200 OK" width="640">
@@ -184,17 +186,23 @@ JanusAPI runs on **macOS** (Apple silicon and Intel), **Windows** (x64) and **Li
 
 Every release is on the [Releases](https://github.com/mehtastack/JanusAPI/releases) page. The app checks for new releases and shows them in **Settings → About**; signed macOS, Windows and AppImage builds update themselves.
 
-Or build it from source (Node.js 22 or later):
+### Install from source (one command)
+
+Build JanusAPI on your own machine and install it, with Node.js 22 or later and Git. An app you build yourself opens without the macOS or Windows warning.
 
 ```sh
-git clone https://github.com/mehtastack/JanusAPI.git
-cd JanusAPI
-npx -y pnpm@10 install
-npx -y pnpm@10 --filter @apijanus/desktop dist   # the app, in apps/desktop/release/
-npx -y pnpm@10 --filter @apijanus/cli build      # the CLI: node apps/cli/dist/janus.mjs
+git clone https://github.com/mehtastack/JanusAPI.git && cd JanusAPI && npm run install:app
 ```
 
-A macOS build without a Developer ID certificate is unsigned: open it once, then choose **Open Anyway** in System Settings → Privacy & Security. On Windows, an unsigned installer makes SmartScreen warn: choose **More info → Run anyway**.
+- **macOS**: installs `JanusAPI.app` in `/Applications`.
+- **Windows**: runs the installer for your user, with Start menu and desktop shortcuts.
+- **Linux**: installs to `~/.local/share/janusapi`, with a `janusapi` command and an app-menu entry. On Ubuntu 24.04 and later it asks for your password once, to set up Chromium's sandbox helper.
+
+Add `--cli` to also install the `janus` command-line runner (`npm run install:app -- --cli`), or `--no-app` for the command only. To update: `git pull && npm run install:app`.
+
+### First open of a downloaded build
+
+The downloads are not signed yet. On **macOS**, open the app once, then choose **Open Anyway** in System Settings → Privacy & Security (or run `xattr -dr com.apple.quarantine /Applications/JanusAPI.app`). On **Windows**, SmartScreen warns: choose **More info → Run anyway**.
 
 ## Contributing
 
