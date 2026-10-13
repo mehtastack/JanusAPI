@@ -6,19 +6,13 @@
 
 Build, send and test HTTP and GraphQL requests. Ask Janus why a request fails and it reads the response, fixes the request and writes the tests, asking you before it sends anything.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-3DF5B0)](LICENSE) [![CI](https://github.com/mehtastack/JanusAPI/actions/workflows/ci.yml/badge.svg)](https://github.com/mehtastack/JanusAPI/actions/workflows/ci.yml) [![Downloads](https://img.shields.io/github/downloads/mehtastack/JanusAPI/total?color=3DF5B0)](https://github.com/mehtastack/JanusAPI/releases) ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-555) ![No account](https://img.shields.io/badge/account-not%20needed-555)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3DF5B0)](LICENSE) [![CI](https://github.com/mehtastack/JanusAPI/actions/workflows/ci.yml/badge.svg)](https://github.com/mehtastack/JanusAPI/actions/workflows/ci.yml) ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-555) ![No account](https://img.shields.io/badge/account-not%20needed-555)
 
-<p>
-<a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-arm64.dmg"><img src="assets/download/macos.svg" alt="Download for macOS" height="48"></a>
-<a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-Setup-x64.exe"><img src="assets/download/windows.svg" alt="Download for Windows" height="48"></a>
-<a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-x86_64.AppImage"><img src="assets/download/linux.svg" alt="Download for Linux" height="48"></a>
-</p>
+```sh
+git clone https://github.com/mehtastack/JanusAPI.git && cd JanusAPI && npm run install:app
+```
 
-<sub>macOS button: Apple silicon · also for <a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-x64.dmg">Intel Macs</a> · Linux as <a href="https://github.com/mehtastack/JanusAPI/releases/latest/download/janusapi_amd64.deb">.deb</a> · <a href="https://github.com/mehtastack/JanusAPI/releases">all releases</a></sub>
-
-<sub>Downloaded builds are not signed yet, so macOS and Windows ask once before the first open (<a href="#install">how</a>). Or <a href="#install-from-source-one-command">install from source with one command</a>, which never asks.</sub>
-
-[Website](https://mehtastack.com/janusapi) · [All releases](https://github.com/mehtastack/JanusAPI/releases) · [Why JanusAPI](#janusapi-vs-postman-vs-bruno)
+[Website](https://mehtastack.com/janusapi) · [Install](#install) · [Why JanusAPI](#janusapi-vs-postman-vs-bruno)
 
 <img src="assets/janus-demo.svg" alt="Animated: a request fails with 401, Janus switches the auth to a Bearer token, asks before sending, and the request returns 200 OK" width="640">
 
@@ -117,7 +111,7 @@ Pick Anthropic, an OpenAI-compatible endpoint or a local Ollama model. Proxy (sy
 | **File uploads** | Multipart and binary bodies; files outside the collection are sent only after you choose them on this computer |
 | **Network** | System, PAC or manual proxy, extra CA certificates, OS root store, client certificates (PEM or PKCS#12) |
 | **Themes** | Dark and light, following the OS by default |
-| **Updates** | The app checks GitHub Releases and installs updates itself where the platform allows |
+| **Updates** | `git pull && npm run install:app` rebuilds and reinstalls the latest version |
 
 ## Command line
 
@@ -140,7 +134,7 @@ SKIP  GET    Later  —
 1 passed, 1 failed, 1 errored, 1 skipped in 1.2 s
 ```
 
-Data files (`-d data.csv`), iterations, `--bail`, proxies and client certificates are supported; reporters are `cli`, `json` and `junit`. Exit codes: `0` all passed, `1` a request failed, `2` setup problem, `130` interrupted. The CLI is built from source for now (see below).
+Data files (`-d data.csv`), iterations, `--bail`, proxies and client certificates are supported; reporters are `cli`, `json` and `junit`. Exit codes: `0` all passed, `1` a request failed, `2` setup problem, `130` interrupted. Install it with `npm run install:app -- --cli` (see [Install](#install)).
 
 ## JanusAPI vs Postman vs Bruno
 
@@ -174,35 +168,26 @@ Postman and Bruno are both good tools. Here is where JanusAPI differs, including
 
 ## Install
 
-JanusAPI runs on **macOS** (Apple silicon and Intel), **Windows** (x64) and **Linux** (x64). Download the latest version:
-
-| Platform | Download |
-|---|---|
-| macOS, Apple silicon | [JanusAPI-arm64.dmg](https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-arm64.dmg) |
-| macOS, Intel | [JanusAPI-x64.dmg](https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-x64.dmg) |
-| Windows, x64 | [JanusAPI-Setup-x64.exe](https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-Setup-x64.exe) |
-| Linux, x64 | [JanusAPI-x86_64.AppImage](https://github.com/mehtastack/JanusAPI/releases/latest/download/JanusAPI-x86_64.AppImage) (`chmod +x` it, then run it) |
-| Debian and Ubuntu, x64 | [janusapi_amd64.deb](https://github.com/mehtastack/JanusAPI/releases/latest/download/janusapi_amd64.deb) (`sudo apt install ./janusapi_amd64.deb`) |
-
-Every release is on the [Releases](https://github.com/mehtastack/JanusAPI/releases) page. The app checks for new releases and shows them in **Settings → About**; signed macOS, Windows and AppImage builds update themselves.
-
-### Install from source (one command)
-
-Build JanusAPI on your own machine and install it, with Node.js 22 or later and Git. An app you build yourself opens without the macOS or Windows warning.
+JanusAPI runs on **macOS** (Apple silicon and Intel), **Windows** (x64) and **Linux** (x64). Install it with one command, using Node.js 22 or later and Git:
 
 ```sh
 git clone https://github.com/mehtastack/JanusAPI.git && cd JanusAPI && npm run install:app
 ```
 
-- **macOS**: installs `JanusAPI.app` in `/Applications`.
+It installs the dependencies, builds JanusAPI for your machine and installs it:
+
+- **macOS**: `JanusAPI.app` in `/Applications`. Open it from Applications or Spotlight.
 - **Windows**: runs the installer for your user, with Start menu and desktop shortcuts.
-- **Linux**: installs to `~/.local/share/janusapi`, with a `janusapi` command and an app-menu entry. On Ubuntu 24.04 and later it asks for your password once, to set up Chromium's sandbox helper.
+- **Linux**: `~/.local/share/janusapi`, with a `janusapi` command and an app-menu entry. On Ubuntu 24.04 and later it asks for your password once, to set up Chromium's sandbox helper.
 
-Add `--cli` to also install the `janus` command-line runner (`npm run install:app -- --cli`), or `--no-app` for the command only. To update: `git pull && npm run install:app`.
+An app you build yourself opens straight away: macOS and Windows show no "unidentified developer" warning.
 
-### First open of a downloaded build
+| Option | What it does |
+|---|---|
+| `npm run install:app -- --cli` | Also installs the `janus` command-line runner (in `~/.local/bin`, or on your PATH on Windows) |
+| `npm run install:app -- --no-app` | Installs only the `janus` command |
 
-The downloads are not signed yet. On **macOS**, open the app once, then choose **Open Anyway** in System Settings → Privacy & Security (or run `xattr -dr com.apple.quarantine /Applications/JanusAPI.app`). On **Windows**, SmartScreen warns: choose **More info → Run anyway**.
+To update, run `git pull && npm run install:app` in the same folder. The first run takes a few minutes, mostly installing dependencies; later runs are faster.
 
 ## Contributing
 

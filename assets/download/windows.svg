@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="272" height="56" viewBox="0 0 272 56" role="img" aria-label="Download for Windows">
-  <title>Download for Windows</title>
-  <rect x="1" y="1" width="270" height="54" rx="14" fill="#131513" stroke="#3A403B" stroke-width="1.5"/>
-  <g transform="translate(24 16) scale(1)" fill="#E8E5DF"><path d="M2 3.5 10.5 2.3v8.9H2Zm9.6-1.4L22 .6v10.6H11.6ZM2 12.3h8.5v8.9L2 20Zm9.6 0H22V23l-10.4-1.4Z"/></g>
-  <text x="60" y="34.5" fill="#E8E5DF" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="18" font-weight="600">Download for Windows</text>
-</svg>
